@@ -5,12 +5,12 @@ import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RawData } from "ws";
 import { WebSocket } from "ws";
-
 import type { RuntimeTaskSessionSummary, RuntimeTerminalWsServerMessage } from "../../../src/core/api-contract";
 import { getKanbanRuntimePort, setKanbanRuntimePort } from "../../../src/core/runtime-endpoint";
 import type { TerminalSessionListener, TerminalSessionService } from "../../../src/terminal/terminal-session-service";
 import type { TerminalRestoreSnapshot } from "../../../src/terminal/terminal-state-mirror";
 import { createTerminalWebSocketBridge, type TerminalWebSocketBridge } from "../../../src/terminal/ws-server";
+import { wsHttpOrigin } from "../../utilities/ws-origin";
 
 const TASK_ID = "task-1";
 const WORKSPACE_ID = "workspace-1";
@@ -94,10 +94,6 @@ interface QueuedWebSocket {
 	socket: WebSocket;
 	queue: RawData[];
 	events: EventEmitter;
-}
-
-function wsHttpOrigin(url: string): string {
-	return new URL(url.replace(/^wss:/, "https:").replace(/^ws:/, "http:")).origin;
 }
 
 async function openQueuedWebSocket(url: string): Promise<QueuedWebSocket> {
@@ -219,15 +215,12 @@ async function attemptUpgradeAndReadResponse(
 			reject(new Error(`Timed out waiting for upgrade response: ${url}`));
 		}, timeoutMs);
 
-		const ws = new WebSocket(
-			url,
-			{
-				headers: {
-					...(cookieHeader ? { cookie: cookieHeader } : {}),
-					origin: wsHttpOrigin(url),
-				},
+		const ws = new WebSocket(url, {
+			headers: {
+				...(cookieHeader ? { cookie: cookieHeader } : {}),
+				origin: wsHttpOrigin(url),
 			},
-		);
+		});
 
 		let statusLine = "";
 

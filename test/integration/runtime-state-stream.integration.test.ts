@@ -28,6 +28,7 @@ import type {
 } from "../../src/core/api-contract";
 import { createGitTestEnv } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
+import { wsHttpOrigin } from "../utilities/ws-origin";
 
 const requireFromHere = createRequire(import.meta.url);
 
@@ -313,7 +314,7 @@ async function startKanbanServer(input: { cwd: string; homeDir: string; port: nu
 }
 
 async function connectRuntimeStream(url: string): Promise<RuntimeStreamClient> {
-	const socket = new WebSocket(url, { headers: { origin: new URL(url.replace(/^wss:/, "https:").replace(/^ws:/, "http:")).origin } });
+	const socket = new WebSocket(url, { headers: { origin: wsHttpOrigin(url) } });
 	const emitter = new EventEmitter();
 	const queue: RuntimeStateStreamMessage[] = [];
 
