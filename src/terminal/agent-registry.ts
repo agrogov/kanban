@@ -60,7 +60,9 @@ function isRuntimeDebugModeEnabled(): boolean {
 }
 
 export function detectInstalledCommands(): string[] {
-	const candidates = [...RUNTIME_AGENT_CATALOG.map((entry) => entry.binary), "npx"];
+	// Dedupe first: several catalog entries share a binary (e.g. cline / cline-cli),
+	// and we only need one PATH scan per unique binary.
+	const candidates = [...new Set(RUNTIME_AGENT_CATALOG.map((entry) => entry.binary)), "npx"];
 	const detected: string[] = [];
 
 	for (const candidate of candidates) {

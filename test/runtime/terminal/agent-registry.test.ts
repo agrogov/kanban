@@ -15,6 +15,7 @@ import {
 	detectInstalledCommands,
 	resolveAgentCommand,
 } from "../../../src/terminal/agent-registry";
+import { RUNTIME_AGENT_CATALOG } from "../../../src/core/agent-catalog";
 
 function createRuntimeConfigState(overrides: Partial<RuntimeConfigState> = {}): RuntimeConfigState {
 	return {
@@ -48,7 +49,8 @@ describe("agent-registry", () => {
 		const detected = detectInstalledCommands();
 
 		expect(detected).toEqual(["claude"]);
-		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledTimes(12);
+		const expectedPathScans = new Set(RUNTIME_AGENT_CATALOG.map((entry) => entry.binary)).size + 1;
+		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledTimes(expectedPathScans);
 	});
 
 	it("treats shell-only agents as unavailable", () => {
