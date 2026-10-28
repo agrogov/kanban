@@ -182,9 +182,13 @@ describe("BoardCard", () => {
 		}
 	});
 
+	function renderWithProviders(children: ReactNode): void {
+		root.render(<TooltipProvider>{children}</TooltipProvider>);
+	}
+
 	it("shows a mode-specific cancel button and hides it after canceling auto review", async () => {
 		await act(async () => {
-			root.render(<Harness />);
+			renderWithProviders(<Harness />);
 		});
 
 		const cancelButton = Array.from(container.querySelectorAll("button")).find(
@@ -205,7 +209,7 @@ describe("BoardCard", () => {
 
 	it("shows a loading state on the review done button while moving to done", async () => {
 		await act(async () => {
-			root.render(<BoardCard card={createCard()} index={0} columnId="review" isMoveToTrashLoading />);
+			renderWithProviders(<BoardCard card={createCard()} index={0} columnId="review" isMoveToTrashLoading />);
 		});
 
 		const trashButton = container.querySelector('button[aria-label="Move task to done"]');
@@ -219,7 +223,7 @@ describe("BoardCard", () => {
 			"Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau final hidden segment";
 
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard card={createCard({ prompt: `Task title||${description}` })} index={0} columnId="backlog" />,
 			);
 		});
@@ -252,15 +256,13 @@ describe("BoardCard", () => {
 
 	it("reconstructs and shows trashed worktree path when workspace metadata is not tracked", async () => {
 		await act(async () => {
-			root.render(
-				<TooltipProvider>
-					<BoardCard
-						card={createCard({ id: "trash-task-1" })}
-						index={0}
-						columnId="trash"
-						workspacePath="/Users/alice/projects/kanban"
-					/>
-				</TooltipProvider>,
+			renderWithProviders(
+				<BoardCard
+					card={createCard({ id: "trash-task-1" })}
+					index={0}
+					columnId="trash"
+					workspacePath="/Users/alice/projects/kanban"
+				/>,
 			);
 		});
 
@@ -280,7 +282,7 @@ describe("BoardCard", () => {
 		};
 
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard({
 						agentId: "cline",
@@ -302,7 +304,7 @@ describe("BoardCard", () => {
 
 	it("shows the task-level indicator for reasoning-only overrides", async () => {
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard({
 						agentSettings: {
@@ -321,7 +323,7 @@ describe("BoardCard", () => {
 
 	it("shows a fallback indicator for reasoning-only overrides without a resolved default model", async () => {
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard({
 						agentSettings: {
@@ -339,7 +341,7 @@ describe("BoardCard", () => {
 
 	it("shows explicit default reasoning metadata for reasoning-only task overrides", async () => {
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard({
 						agentId: "cline",
@@ -358,7 +360,7 @@ describe("BoardCard", () => {
 
 	it("does not mislabel provider-only overrides as the global default model", async () => {
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard({
 						agentSettings: {
@@ -378,7 +380,7 @@ describe("BoardCard", () => {
 
 	it("does not show inherited global reasoning for explicit model overrides using default effort", async () => {
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard({
 						agentId: "cline",
@@ -398,7 +400,7 @@ describe("BoardCard", () => {
 
 	it("shows tool input details in the session preview text", async () => {
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard()}
 					index={0}
@@ -439,7 +441,7 @@ describe("BoardCard", () => {
 
 	it("shows non-cline tool activity in the compact tool label format", async () => {
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard()}
 					index={0}
@@ -466,7 +468,7 @@ describe("BoardCard", () => {
 
 	it("keeps canonical tool names in the session preview label", async () => {
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard()}
 					index={0}
@@ -492,7 +494,7 @@ describe("BoardCard", () => {
 
 	it("parses codex tool activity into the compact tool label format", async () => {
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard()}
 					index={0}
@@ -519,7 +521,7 @@ describe("BoardCard", () => {
 
 	it("does not show a stale bare tool name for non-tool review updates", async () => {
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard()}
 					index={0}
@@ -546,7 +548,7 @@ describe("BoardCard", () => {
 
 	it("keeps showing the last cline tool label during assistant streaming", async () => {
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard()}
 					index={0}
@@ -589,7 +591,7 @@ describe("BoardCard", () => {
 		mockMeasureWidths = [0, 0, 0];
 
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard({ prompt: "Task title||Freshly created task description" })}
 					index={0}
@@ -606,25 +608,23 @@ describe("BoardCard", () => {
 			"Reviewing the archived implementation details and collecting the final notes for the handoff before cleanup hidden tail";
 
 		await act(async () => {
-			root.render(
-				<TooltipProvider>
-					<BoardCard
-						card={createCard()}
-						index={0}
-						columnId="trash"
-						sessionSummary={createSummary("awaiting_review", {
-							latestHookActivity: {
-								activityText: null,
-								toolName: null,
-								toolInputSummary: null,
-								finalMessage: preview,
-								hookEventName: "assistant_delta",
-								notificationType: null,
-								source: "cline-sdk",
-							},
-						})}
-					/>
-				</TooltipProvider>,
+			renderWithProviders(
+				<BoardCard
+					card={createCard()}
+					index={0}
+					columnId="trash"
+					sessionSummary={createSummary("awaiting_review", {
+						latestHookActivity: {
+							activityText: null,
+							toolName: null,
+							toolInputSummary: null,
+							finalMessage: preview,
+							hookEventName: "assistant_delta",
+							notificationType: null,
+							source: "cline-sdk",
+						},
+					})}
+				/>,
 			);
 		});
 
@@ -644,7 +644,7 @@ describe("BoardCard", () => {
 			"Reviewing the archived implementation details and collecting the final notes for the handoff before cleanup hidden tail";
 
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard()}
 					index={0}
@@ -677,7 +677,7 @@ describe("BoardCard", () => {
 
 	it("shows the latest assistant preview on active task cards", async () => {
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard()}
 					index={0}
@@ -703,7 +703,7 @@ describe("BoardCard", () => {
 
 	it("shows normal agent messages without the agent prefix", async () => {
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard()}
 					index={0}
