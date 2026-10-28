@@ -200,6 +200,22 @@ export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 
 const RUNTIME_LAUNCH_SUPPORTED_AGENT_ID_SET = new Set<RuntimeAgentId>(RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS);
 
+// Cline runtimes lead user-facing agent lists: the embedded SDK session first, then the CLI.
+const RUNTIME_AGENT_HEAD_DISPLAY_IDS: readonly RuntimeAgentId[] = ["cline", "cline-cli"];
+
+/**
+ * Stable display order for launch-supported agents: the head preference above, then every
+ * remaining id in RUNTIME_AGENT_CATALOG declaration order. Derived from the catalog so each
+ * supported agent owns exactly one declared position (no rank collisions).
+ */
+export function getRuntimeLaunchAgentDisplayOrder(): readonly RuntimeAgentId[] {
+	const supportedIds = getRuntimeLaunchSupportedAgentCatalog().map((entry) => entry.id);
+	const headIds = new Set<RuntimeAgentId>(RUNTIME_AGENT_HEAD_DISPLAY_IDS);
+	const head = RUNTIME_AGENT_HEAD_DISPLAY_IDS.filter((agentId) => supportedIds.includes(agentId));
+	const tail = supportedIds.filter((agentId) => !headIds.has(agentId));
+	return [...head, ...tail];
+}
+
 export function isRuntimeAgentLaunchSupported(agentId: RuntimeAgentId): boolean {
 	return RUNTIME_LAUNCH_SUPPORTED_AGENT_ID_SET.has(agentId);
 }

@@ -91,6 +91,7 @@ vi.mock("@runtime-agent-catalog", () => ({
 		{ id: "claude", label: "Claude Code", binary: "claude" },
 		{ id: "grok", label: "Grok Build", binary: "grok" },
 	]),
+	getRuntimeLaunchAgentDisplayOrder: vi.fn(() => ["cline", "cline-cli", "claude", "grok"]),
 }));
 
 vi.mock("@runtime-shortcuts", () => ({
@@ -511,6 +512,27 @@ describe("RuntimeSettingsDialog", () => {
 		});
 
 		expect(handleSaved).toHaveBeenCalledTimes(1);
+	});
+
+	it("orders launch-supported agents by the catalog display order", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={savedClineOauthConfig}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
+		const agentRows = Array.from(document.body.querySelectorAll('[role="button"]'));
+		const rowIndexOfLabel = (label: string) => agentRows.findIndex((row) => row.textContent?.includes(label));
+		const expectedOrder = ["Cline", "Cline CLI", "Claude Code", "Grok Build", "Pi"];
+		const rowIndices = expectedOrder.map(rowIndexOfLabel);
+
+		expect(rowIndices.every((rowIndex) => rowIndex !== -1)).toBe(true);
+		expect(rowIndices).toStrictEqual(rowIndices.toSorted((left, right) => left - right));
 	});
 
 	it("lists Pi as a launch-supported agent", async () => {

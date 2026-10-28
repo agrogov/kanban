@@ -5,7 +5,11 @@ import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as RadixPopover from "@radix-ui/react-popover";
 import * as RadixSelect from "@radix-ui/react-select";
 import * as RadixSwitch from "@radix-ui/react-switch";
-import { getRuntimeAgentCatalogEntry, getRuntimeLaunchSupportedAgentCatalog } from "@runtime-agent-catalog";
+import {
+	getRuntimeAgentCatalogEntry,
+	getRuntimeLaunchAgentDisplayOrder,
+	getRuntimeLaunchSupportedAgentCatalog,
+} from "@runtime-agent-catalog";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
 import {
 	Bell,
@@ -92,16 +96,9 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }>
 
 export type RuntimeSettingsSection = "shortcuts";
 
-const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = [
-	"cline",
-	"cline-cli",
-	"claude",
-	"codex",
-	"droid",
-	"kiro",
-	"grok",
-	"pi",
-];
+// Derived from the agent catalog (Cline head preference, then catalog declaration order),
+// so every launch-supported agent owns a stable position even after new CLIs are enabled.
+const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = getRuntimeLaunchAgentDisplayOrder();
 
 type SettingsNavId = "general" | "cline" | "git-prompts" | "notifications" | "appearance" | "project";
 
@@ -431,11 +428,17 @@ export function RuntimeSettingsDialog({
 				binary: agent.binary,
 				installed: agent.id === "cline" ? true : null,
 			}));
-		const orderIndexByAgentId = new Map(SETTINGS_AGENT_ORDER.map((agentId, index) => [agentId, index] as const));
+		const rankByAgentId = new Map(SETTINGS_AGENT_ORDER.map((agentId, index) => [agentId, index] as const));
 		const orderedAgents = [...agents].sort((left, right) => {
-			const leftOrderIndex = orderIndexByAgentId.get(left.id) ?? Number.MAX_SAFE_INTEGER;
-			const rightOrderIndex = orderIndexByAgentId.get(right.id) ?? Number.MAX_SAFE_INTEGER;
-			return leftOrderIndex - rightOrderIndex;
+			const rankDelta =
+				(rankByAgentId.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+				(rankByAgentId.get(right.id) ?? Number.MAX_SAFE_INTEGER);
+			if (rankDelta !== 0) {
+				return rankDelta;
+			}
+			// Uncatalogued ids (stale config payloads) all share the tail rank; break the tie on the
+			// id itself so the order never depends on config input order.
+			return left.id.localeCompare(right.id);
 		});
 		return orderedAgents.map((agent) => ({
 			...agent,

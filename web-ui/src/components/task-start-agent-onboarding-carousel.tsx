@@ -1,5 +1,5 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
-import { getRuntimeAgentCatalogEntry } from "@runtime-agent-catalog";
+import { getRuntimeAgentCatalogEntry, getRuntimeLaunchAgentDisplayOrder } from "@runtime-agent-catalog";
 import { Check } from "lucide-react";
 import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -83,17 +83,9 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 	},
 ];
 
-const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = [
-	"cline",
-	"cline-cli",
-	"claude",
-	"codex",
-	"droid",
-	"kiro",
-	"grok",
-	"pi",
-	"devin",
-];
+// Same derived order the Settings dialog sorts on, so onboarding rows and settings rows
+// stay in lockstep when the catalog gains or re-enables a CLI.
+const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = getRuntimeLaunchAgentDisplayOrder();
 const FALLBACK_ONBOARDING_SLIDE: OnboardingSlide = {
 	kind: "agent-selection",
 	title: "",
