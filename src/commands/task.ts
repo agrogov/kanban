@@ -1180,7 +1180,7 @@ export function registerTaskCommand(program: Command): void {
 		.option("--auto-review-mode <mode>", "Auto-review mode: commit | pr.", parseAutoReviewMode)
 		.option(
 			"--agent-id <id>",
-			'Agent override: cline | cline-cli | claude | codex | droid | devin | gemini | opencode | kiro. Use "default" to clear.',
+			`Agent override: ${VALID_AGENT_IDS.join(" | ")}. Use "default" to clear.`,
 		)
 		.option(
 			"--provider <id>",
@@ -1267,7 +1267,7 @@ export function registerTaskCommand(program: Command): void {
 		.option("--auto-review-mode <mode>", "Auto-review mode: commit | pr.", parseAutoReviewMode)
 		.option(
 			"--agent-id <id>",
-			'Agent override: cline | cline-cli | claude | codex | droid | devin | gemini | opencode | kiro. Use "default" to clear.',
+			`Agent override: ${VALID_AGENT_IDS.join(" | ")}. Use "default" to clear.`,
 		)
 		.option(
 			"--provider <id>",
