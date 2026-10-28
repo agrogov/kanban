@@ -9,13 +9,13 @@ vi.mock("../../../src/terminal/command-discovery.js", () => ({
 }));
 
 import type { RuntimeConfigState } from "../../../src/config/runtime-config";
+import { RUNTIME_AGENT_CATALOG } from "../../../src/core/agent-catalog";
 import {
 	buildAgentCapabilityReport,
 	buildRuntimeConfigResponse,
 	detectInstalledCommands,
 	resolveAgentCommand,
 } from "../../../src/terminal/agent-registry";
-import { RUNTIME_AGENT_CATALOG } from "../../../src/core/agent-catalog";
 
 function createRuntimeConfigState(overrides: Partial<RuntimeConfigState> = {}): RuntimeConfigState {
 	return {
