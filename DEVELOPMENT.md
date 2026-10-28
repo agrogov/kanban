@@ -232,6 +232,11 @@ They are distinct from Cline SDK plugin runtime hooks such as `beforeRun`,
   - `Stop` emits `to_review` only when the hook payload `reason` is `end_turn`
   - `StopCancelled` with `permission_rejected` / `permission_cancelled` emits `to_review`
   - `Notification` with `permission_prompt` or `idle_prompt` emits `to_review`
+- Pi
+  - Interactive TUI via `hooks pi-wrapper` (never `--mode json`)
+  - JSONL watcher: user → `to_in_progress`; toolCall / toolResult / bashExecution → `activity`; assistant `stopReason === "stop"` with no tools → `to_review`
+  - Clean wrapper exit also ingests `to_review`
+  - `autoRestartOnExit: false` because the session dir is durable
 
 Important behavior details:
 

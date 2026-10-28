@@ -391,6 +391,72 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(config.hooks?.stop?.[0]?.command).toContain("Waiting for review");
 	});
 
+	it("routes Pi through hooks pi-wrapper with a dedicated session dir and real TUI args", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "hi",
+			workspaceId: "workspace-1",
+		});
+
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-pi");
+		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
+		expect(launch.autoRestartOnExit).toBe(false);
+
+		const launchCommand = [launch.binary ?? "", ...launch.args].join(" ");
+		expect(launchCommand).toContain("hooks");
+		expect(launchCommand).toContain("pi-wrapper");
+		expect(launchCommand).toContain("--real-binary");
+		expect(launchCommand).toContain("pi");
+		expect(launchCommand).toContain("--session-dir");
+		expect(launchCommand).toContain(join(homedir(), ".cline", "kanban", "sessions", "pi", "task-pi"));
+		expect(launchCommand).toContain("--approve");
+		expect(launch.args.at(-1)).toBe("hi");
+		expect(launchCommand).not.toContain("--mode json");
+		expect(launchCommand).not.toContain("--resume");
+	});
+
+	it("preserves an explicit Pi session dir without overriding it", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-explicit-session",
+			agentId: "pi",
+			binary: "pi",
+			args: ["--session-dir", "/tmp/custom-pi-session"],
+			cwd: "/tmp",
+			prompt: "hi",
+			workspaceId: "workspace-1",
+		});
+
+		const launchCommand = [launch.binary ?? "", ...launch.args].join(" ");
+		expect(launchCommand).toContain("/tmp/custom-pi-session");
+		expect(launchCommand).not.toContain(
+			join(homedir(), ".cline", "kanban", "sessions", "pi", "task-pi-explicit-session"),
+		);
+	});
+
+	it("appends Kanban sidebar instructions for home Pi sessions", async () => {
+		setupTempHome();
+		setKanbanProcessContext();
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:pi",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			workspaceId: "workspace-1",
+		});
+
+		expect(launch.args).toContain("--append-system-prompt");
+		const promptIndex = launch.args.indexOf("--append-system-prompt");
+		expect(launch.args[promptIndex + 1]).toContain("Current home agent: `pi`");
+	});
+
 	it("materializes task images for CLI prompts", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
@@ -599,6 +665,10 @@ describe("prepareAgentLaunch hook strategies", () => {
 			taskId: "task-grok",
 			agentId: "grok",
 			binary: "grok",
+		const piLaunch = await prepareAgentLaunch({
+			taskId: "task-pi",
+			agentId: "pi",
+			binary: "pi",
 			args: [],
 			cwd: "/tmp",
 			prompt: "",
@@ -606,6 +676,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 		expect(grokLaunch.args).toContain("--continue");
 		expect(grokLaunch.args).not.toContain("--resume");
+		expect(piLaunch.args).toContain("--continue");
+		expect(piLaunch.args).not.toContain("--resume");
 
 		const clineLaunch = await prepareAgentLaunch({
 			taskId: "task-cline",
@@ -1192,5 +1264,50 @@ describe("per-task agentSettings overrides", () => {
 			prompt: "",
 		});
 		expect(withoutSettings.sessionWarning).toBeUndefined();
+	});
+
+	it("pi: passes model/thinking/provider verbatim and does not warn", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-settings",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: {
+				providerId: "anthropic",
+				modelId: "claude-sonnet-4-5",
+				reasoningEffort: "high",
+			},
+		});
+
+		expect(launch.sessionWarning).toBeUndefined();
+		expect(launch.args).toEqual(
+			expect.arrayContaining(["--provider", "anthropic", "--model", "claude-sonnet-4-5", "--thinking", "high"]),
+		);
+	});
+
+	it("pi: keeps existing --model/--thinking/--provider flags and does not duplicate", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-existing",
+			agentId: "pi",
+			binary: "pi",
+			args: ["--model", "already-set", "--thinking", "low", "--provider", "openai"],
+			cwd: "/tmp",
+			prompt: "",
+			agentSettings: {
+				providerId: "anthropic",
+				modelId: "claude-sonnet-4-5",
+				reasoningEffort: "high",
+			},
+		});
+
+		expect(launch.args.filter((arg) => arg === "--model")).toHaveLength(1);
+		expect(launch.args.filter((arg) => arg === "--thinking")).toHaveLength(1);
+		expect(launch.args.filter((arg) => arg === "--provider")).toHaveLength(1);
+		expect(launch.args).toContain("already-set");
+		expect(launch.args).not.toContain("claude-sonnet-4-5");
 	});
 });

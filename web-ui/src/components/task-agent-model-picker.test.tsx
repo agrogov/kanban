@@ -20,6 +20,7 @@ vi.mock("@runtime-agent-catalog", () => ({
 		{ id: "gemini", label: "Gemini CLI", binary: "gemini" },
 		{ id: "kiro", label: "Kiro", binary: "kiro-cli" },
 		{ id: "opencode", label: "OpenCode", binary: "opencode" },
+		{ id: "pi", label: "Pi", binary: "pi" },
 	]),
 	getRuntimeAgentCatalogEntry: vi.fn((agentId: string) => {
 		const capabilitiesByAgent: Record<
@@ -66,6 +67,13 @@ vi.mock("@runtime-agent-catalog", () => ({
 				effortOverride: "none",
 				providerOverride: "flag",
 				docsUrl: "https://opencode.ai/docs/cli/",
+			},
+			pi: {
+				label: "Pi",
+				modelOverride: "flag",
+				effortOverride: "flag",
+				providerOverride: "flag",
+				docsUrl: "https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/usage.md",
 			},
 		};
 		const capabilities = capabilitiesByAgent[agentId];
@@ -449,6 +457,7 @@ const AGENT_OPTIONS = [
 	{ value: "gemini", label: "Gemini CLI" },
 	{ value: "kiro", label: "Kiro" },
 	{ value: "opencode", label: "OpenCode" },
+	{ value: "pi", label: "Pi" },
 ];
 
 async function openOverrideSettings(): Promise<void> {
@@ -521,6 +530,32 @@ describe("TaskAgentModelPicker – mechanism-driven fields", () => {
 		await renderForAgent("kiro");
 		expect(container.querySelector('input[aria-label="Model override"]')).toBeNull();
 		expect(container.querySelector('input[aria-label="Reasoning effort override"]')).toBeNull();
+	});
+
+	it("shows free-text model and effort for pi", async () => {
+		const { TaskAgentModelPicker } = await import("@/components/task-agent-model-picker");
+
+		await act(async () =>
+			root.render(
+				<TaskAgentModelPicker
+					agentId={"pi" as RuntimeAgentId}
+					onAgentIdChange={() => {}}
+					agentSettings={undefined}
+					onAgentSettingsChange={() => {}}
+					agentOptions={AGENT_OPTIONS}
+					clineProviderOptions={[{ value: "", label: "Default" }]}
+					clineModelOptions={[{ value: "", label: "Default" }]}
+					isLoadingProviders={false}
+					isLoadingModels={false}
+					defaultAgentId={"cline" as RuntimeAgentId}
+				/>,
+			),
+		);
+
+		await openOverrideSettings();
+
+		expect(container.querySelector('input[aria-label="Model override"]')).not.toBeNull();
+		expect(container.querySelector('input[aria-label="Reasoning effort override"]')).not.toBeNull();
 	});
 
 	it("keeps model and clears provider when switching from cline to gemini", async () => {

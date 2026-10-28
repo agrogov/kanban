@@ -83,7 +83,7 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 	},
 ];
 
-const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "droid", "kiro", "grok"];
+const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "droid", "kiro", "grok", "pi"];
 const FALLBACK_ONBOARDING_SLIDE: OnboardingSlide = {
 	kind: "agent-selection",
 	title: "",
@@ -307,6 +307,8 @@ function resolveInstallInstructions(agentId: RuntimeAgentId): string {
 	}
 	if (agentId === "grok") {
 		return "xAI's Grok Build coding agent CLI.";
+	if (agentId === "pi") {
+		return "Install with npm i -g --ignore-scripts @earendil-works/pi-coding-agent or curl -fsSL https://pi.dev/install.sh | sh.";
 	}
 	return "Install from the official docs.";
 }
@@ -324,7 +326,7 @@ function getInstallLinkLabel(agentId: RuntimeAgentId): string {
 	if (agentId === "kiro") {
 		return "Learn more";
 	}
-	if (agentId === "grok") {
+	if (agentId === "grok" || agentId === "pi") {
 		return "Learn more";
 	}
 	return "Install guide";

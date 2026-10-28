@@ -12,6 +12,7 @@ import type {
 } from "../core/api-contract";
 import {
 	type AgentAdapterLaunchInput,
+	type AgentExitReviewActivityResolver,
 	type AgentOutputTransitionDetector,
 	type AgentOutputTransitionInspectionPredicate,
 	prepareAgentLaunch,
@@ -62,6 +63,8 @@ interface ActiveProcessState {
 	awaitingCodexPromptAfterEnter: boolean;
 	autoConfirmedWorkspaceTrust: boolean;
 	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
+	autoRestartOnExit: boolean;
+	resolveExitReviewActivity: AgentExitReviewActivityResolver | null;
 }
 
 interface SessionEntry {
@@ -465,12 +468,31 @@ export class TerminalSessionManager implements TerminalSessionService {
 					}
 					stopWorkspaceTrustTimers(currentActive);
 
+					const interrupted = currentActive.session.wasInterrupted();
+					if (currentActive.resolveExitReviewActivity) {
+						void currentActive
+							.resolveExitReviewActivity(currentEntry.summary, event.exitCode, interrupted)
+							.then((metadata) => {
+								if (!metadata) {
+									return;
+								}
+								const liveEntry = this.entries.get(request.taskId);
+								if (!liveEntry) {
+									return;
+								}
+								this.applyHookActivity(request.taskId, metadata);
+							})
+							.catch(() => {
+								// Best effort only.
+							});
+					}
 					const summary = this.applySessionEvent(currentEntry, {
 						type: "process.exit",
 						exitCode: event.exitCode,
-						interrupted: currentActive.session.wasInterrupted(),
+						interrupted,
 					});
-					const shouldAutoRestart = this.shouldAutoRestart(currentEntry);
+					const shouldAutoRestart =
+						currentActive.autoRestartOnExit !== false && this.shouldAutoRestart(currentEntry);
 
 					for (const taskListener of currentEntry.listeners.values()) {
 						taskListener.onState?.(cloneSummary(summary));
@@ -537,6 +559,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 			awaitingCodexPromptAfterEnter: false,
 			autoConfirmedWorkspaceTrust: false,
 			workspaceTrustConfirmTimer: null,
+			autoRestartOnExit: launch.autoRestartOnExit !== false,
+			resolveExitReviewActivity: launch.resolveExitReviewActivity ?? null,
 		};
 		entry.active = active;
 		entry.terminalStateMirror = terminalStateMirror;
@@ -701,6 +725,8 @@ export class TerminalSessionManager implements TerminalSessionService {
 			awaitingCodexPromptAfterEnter: false,
 			autoConfirmedWorkspaceTrust: false,
 			workspaceTrustConfirmTimer: null,
+			autoRestartOnExit: true,
+			resolveExitReviewActivity: null,
 		};
 		entry.active = active;
 		entry.terminalStateMirror = terminalStateMirror;

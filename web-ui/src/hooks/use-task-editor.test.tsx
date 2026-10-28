@@ -45,6 +45,7 @@ interface HookSnapshot {
 	editTaskPrompt: string;
 	editTaskStartInPlanMode: boolean;
 	isEditTaskStartInPlanModeDisabled: boolean;
+	isNewTaskStartInPlanModeDisabled: boolean;
 	handleOpenCreateTask: () => void;
 	handleCreateTask: (options?: { keepDialogOpen?: boolean }) => string | null;
 	handleCreateTasks: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
@@ -102,6 +103,7 @@ function HookHarness({
 			editTaskPrompt: editor.editTaskPrompt,
 			editTaskStartInPlanMode: editor.editTaskStartInPlanMode,
 			isEditTaskStartInPlanModeDisabled: editor.isEditTaskStartInPlanModeDisabled,
+			isNewTaskStartInPlanModeDisabled: editor.isNewTaskStartInPlanModeDisabled,
 			handleOpenCreateTask: editor.handleOpenCreateTask,
 			handleCreateTask: editor.handleCreateTask,
 			handleCreateTasks: editor.handleCreateTasks,
@@ -128,6 +130,7 @@ function HookHarness({
 		editor.handleSaveEditedTask,
 		editor.handleSaveAndStartEditedTask,
 		editor.isEditTaskStartInPlanModeDisabled,
+		editor.isNewTaskStartInPlanModeDisabled,
 		editor.isInlineTaskCreateOpen,
 		editor.newTaskPrompt,
 		editor.newTaskImages,
@@ -250,6 +253,28 @@ describe("useTaskEditor", () => {
 		});
 
 		expect(requireSnapshot(latestSnapshot).isEditTaskStartInPlanModeDisabled).toBe(false);
+	});
+
+	it("disables plan mode when the selected task agent is Pi", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		const initialBoard = createBoard([createTask("task-1", "Initial prompt", 1)]);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					initialBoard={initialBoard}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			requireSnapshot(latestSnapshot).setNewTaskAgentId("pi");
+		});
+
+		expect(requireSnapshot(latestSnapshot).isNewTaskStartInPlanModeDisabled).toBe(true);
 	});
 
 	it("queues the saved task id when saving and starting an edited task", async () => {

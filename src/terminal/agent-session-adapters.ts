@@ -7,6 +7,7 @@ import type {
 	RuntimeAgentId,
 	RuntimeHookEvent,
 	RuntimeTaskAgentSettings,
+	RuntimeTaskHookActivity,
 	RuntimeTaskImage,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract";
@@ -23,6 +24,7 @@ import {
 	getOpenCodeModelStatePathCandidates,
 } from "./opencode-paths";
 import { stripAnsi } from "./output-utils";
+import { resolvePiExitReviewActivityFromSessionDir } from "./pi-session-log";
 import type { SessionTransitionEvent } from "./session-state-machine";
 import { prepareTaskPromptWithImages } from "./task-image-prompt";
 
@@ -49,6 +51,12 @@ export type AgentOutputTransitionDetector = (
 
 export type AgentOutputTransitionInspectionPredicate = (summary: RuntimeTaskSessionSummary) => boolean;
 
+export type AgentExitReviewActivityResolver = (
+	summary: RuntimeTaskSessionSummary,
+	exitCode: number | null,
+	interrupted: boolean,
+) => Promise<Partial<RuntimeTaskHookActivity> | null>;
+
 export interface PreparedAgentLaunch {
 	binary?: string;
 	args: string[];
@@ -58,6 +66,8 @@ export interface PreparedAgentLaunch {
 	sessionWarning?: string;
 	detectOutputTransition?: AgentOutputTransitionDetector;
 	shouldInspectOutputForTransition?: AgentOutputTransitionInspectionPredicate;
+	autoRestartOnExit?: boolean;
+	resolveExitReviewActivity?: AgentExitReviewActivityResolver;
 }
 
 interface HookContext {
@@ -128,6 +138,21 @@ function hasCliOption(args: string[], optionName: string): boolean {
 		}
 	}
 	return false;
+}
+
+function getCliOptionValue(args: string[], optionName: string): string | null {
+	for (let i = 0; i < args.length; i += 1) {
+		const arg = args[i];
+		if (arg === optionName) {
+			const next = args[i + 1];
+			return typeof next === "string" && next.length > 0 ? next : null;
+		}
+		if (arg.startsWith(`${optionName}=`)) {
+			const value = arg.slice(optionName.length + 1);
+			return value.length > 0 ? value : null;
+		}
+	}
+	return null;
 }
 
 // Push a card-derived CLI override verbatim unless the user/workspace already
@@ -1699,6 +1724,82 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
+const piAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const piArgs = [...input.args];
+		const env: Record<string, string | undefined> = {};
+		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
+		const sessionDir =
+			getCliOptionValue(piArgs, "--session-dir") ?? join(getRuntimeHomePath(), "sessions", "pi", input.taskId);
+
+		if (!hasCliOption(piArgs, "--session-dir")) {
+			piArgs.push("--session-dir", sessionDir);
+		}
+
+		if (!hasCliOption(piArgs, "--approve")) {
+			piArgs.push("--approve");
+		}
+
+		if (input.resumeFromTrash && !hasCliOption(piArgs, "--continue") && !hasCliOption(piArgs, "-c")) {
+			piArgs.push("--continue");
+		}
+
+		if (appendedSystemPrompt && !hasCliOption(piArgs, "--append-system-prompt")) {
+			piArgs.push("--append-system-prompt", appendedSystemPrompt);
+		}
+
+		applyCliOptionOverride(piArgs, input.agentSettings?.providerId, ["--provider"]);
+		applyCliOptionOverride(piArgs, input.agentSettings?.modelId, ["--model"]);
+		applyCliOptionOverride(piArgs, input.agentSettings?.reasoningEffort, ["--thinking"]);
+
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+		}
+
+		const promptLaunch = withPrompt(piArgs, input.prompt, "append");
+		const resolveExitReviewActivity: AgentExitReviewActivityResolver = async (_summary, exitCode, interrupted) => {
+			if (interrupted || exitCode !== 0) {
+				return null;
+			}
+			return resolvePiExitReviewActivityFromSessionDir(sessionDir);
+		};
+
+		if (hooks) {
+			const wrapperParts = buildHooksCommandParts([
+				"pi-wrapper",
+				"--real-binary",
+				input.binary ?? "pi",
+				"--session-dir",
+				sessionDir,
+				"--",
+				...promptLaunch.args,
+			]);
+			return {
+				binary: wrapperParts[0],
+				args: wrapperParts.slice(1),
+				env,
+				autoRestartOnExit: false,
+				resolveExitReviewActivity,
+			};
+		}
+
+		return {
+			binary: input.binary ?? "pi",
+			args: promptLaunch.args,
+			env,
+			autoRestartOnExit: false,
+			resolveExitReviewActivity,
+		};
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
@@ -1706,7 +1807,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	opencode: opencodeAdapter,
 	droid: droidAdapter,
 	kiro: kiroAdapter,
-	grok: grokAdapter,
+	grok: grok, pi: piAdapter,
 	cline: clineAdapter,
 };
 

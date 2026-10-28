@@ -79,13 +79,14 @@ describe("buildRuntimeConfigResponse", () => {
 		});
 
 		expect(response.agentAutonomousModeEnabled).toBe(true);
-		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "cline", "droid", "kiro", "grok"]);
+		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "cline", "droid", "kiro", "grok", "pi"]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "cline")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "droid")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "kiro")?.defaultArgs).toEqual(["chat"]);
 		expect(response.agents.find((agent) => agent.id === "grok")?.defaultArgs).toEqual([]);
+		expect(response.agents.find((agent) => agent.id === "pi")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "cline")?.installed).toBe(true);
 	});
 
@@ -108,19 +109,21 @@ describe("buildRuntimeConfigResponse", () => {
 		});
 
 		expect(response.agentAutonomousModeEnabled).toBe(false);
-		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "cline", "droid", "kiro", "grok"]);
+		expect(response.agents.map((agent) => agent.id)).toEqual(["claude", "codex", "cline", "droid", "kiro", "grok", "pi"]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "cline")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "droid")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "kiro")?.defaultArgs).toEqual(["chat"]);
 		expect(response.agents.find((agent) => agent.id === "grok")?.defaultArgs).toEqual([]);
+		expect(response.agents.find((agent) => agent.id === "pi")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "cline")?.installed).toBe(true);
 		expect(response.agents.find((agent) => agent.id === "claude")?.command).toBe("claude");
 		expect(response.agents.find((agent) => agent.id === "codex")?.command).toBe("codex");
 		expect(response.agents.find((agent) => agent.id === "droid")?.command).toBe("droid");
 		expect(response.agents.find((agent) => agent.id === "kiro")?.command).toBe("kiro-cli chat");
 		expect(response.agents.find((agent) => agent.id === "grok")?.command).toBe("grok");
+		expect(response.agents.find((agent) => agent.id === "pi")?.command).toBe("pi");
 	});
 
 	it("sets debug mode from runtime environment variables", () => {
@@ -183,5 +186,20 @@ describe("buildAgentCapabilityReport", () => {
 
 		expect(report.find((entry) => entry.id === "cline")?.installed).toBe(true);
 		expect(report.find((entry) => entry.id === "cline")?.launchSupported).toBe(true);
+	});
+
+	it("reports Pi model/effort/provider as flag capabilities and launch-supported", () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
+
+		const report = buildAgentCapabilityReport(createRuntimeConfigState());
+		const pi = report.find((entry) => entry.id === "pi");
+
+		expect(pi?.launchSupported).toBe(true);
+		expect(pi?.capabilities).toEqual({
+			modelOverride: "flag",
+			effortOverride: "flag",
+			providerOverride: "flag",
+			docsUrl: "https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/usage.md",
+		});
 	});
 });
