@@ -45,6 +45,30 @@ export interface CreateTerminalWebSocketBridgeRequest {
 	 * TERMINAL_WS_ACK_STALL_TIMEOUT_MS. Exposed so tests can use a short timeout.
 	 */
 	ackStallTimeoutMs?: number;
+	/**
+	 * How many unacknowledged bytes a viewer may hold while the PTY is paused
+	 * before it is re-restored from a snapshot instead. Defaults to
+	 * OUTPUT_VIEWER_PAUSE_BUDGET_BYTES. Exposed so tests can use a small budget.
+	 */
+	viewerPauseBudgetBytes?: number;
+	/**
+	 * How long in milliseconds a viewer may hold the PTY paused before it is
+	 * re-restored from a snapshot instead. Defaults to
+	 * OUTPUT_VIEWER_PAUSE_BUDGET_MS. Exposed so tests can use a short budget.
+	 */
+	viewerPauseBudgetMs?: number;
+	/**
+	 * How many bytes may be buffered for a viewer that has not completed restore
+	 * before it is re-restored. Defaults to OUTPUT_VIEWER_PENDING_BUDGET_BYTES.
+	 * Exposed so tests can use a small budget.
+	 */
+	viewerPendingBudgetBytes?: number;
+	/**
+	 * How many consecutive forced re-restores a viewer may receive before it is
+	 * terminated instead. Defaults to OUTPUT_VIEWER_FORCED_RESTORE_LIMIT.
+	 * Exposed so tests can use a small limit.
+	 */
+	forcedRestoreLimit?: number;
 }
 
 export interface TerminalWebSocketBridge {
@@ -54,6 +78,9 @@ export interface TerminalWebSocketBridge {
 interface IoOutputState {
 	enqueueOutput: (chunk: Buffer) => void;
 	acknowledgeOutput: (bytes: number) => void;
+	// Called when a viewer exceeds its budget: drops everything buffered for this
+	// viewer and clears its flow-control state so the caller can re-restore it.
+	discardOutputForReRestore: () => void;
 	dispose: () => void;
 }
 
@@ -63,7 +90,12 @@ interface IoOutputState {
 interface TerminalViewerState {
 	clientId: string;
 	pendingOutputChunks: Buffer[];
+	pendingOutputBytes: number;
 	restoreComplete: boolean;
+	// Consecutive forced re-restores since the viewer last completed one. A viewer
+	// that keeps overflowing without ever finishing restore is terminated after a
+	// small number of attempts instead of being re-restored forever.
+	forcedRestoreCount: number;
 	ioState: IoOutputState | null;
 	ioSocket: WebSocket | null;
 	controlSocket: WebSocket | null;
@@ -100,6 +132,24 @@ const TERMINAL_WS_HEARTBEAT_INTERVAL_MS = 30_000;
 // pauseOutput() on the shared PTY forever. Treat "no ack progress while paused"
 // as its own liveness signal and disconnect the viewer when it stalls.
 const TERMINAL_WS_ACK_STALL_TIMEOUT_MS = 20_000;
+// Flow control pauses the shared PTY, which blocks the agent process on stdout,
+// so no single viewer may hold a pause open-ended. Give each viewer a byte and a
+// wall-clock budget; past either, that viewer alone loses its buffered output and
+// is re-restored from a snapshot while the PTY keeps running. Slow-but-progressing
+// viewers stay well inside both budgets; only genuinely stalled ones are re-restored.
+const OUTPUT_VIEWER_PAUSE_BUDGET_BYTES = 512 * 1024;
+const OUTPUT_VIEWER_PAUSE_BUDGET_MS = 2_000;
+// A viewer that connects but never sends restore_complete buffers every PTY chunk
+// in runtime memory. Cap that buffer so a stuck viewer cannot leak memory without
+// bound; on overflow it gets a fresh restore instead.
+const OUTPUT_VIEWER_PENDING_BUDGET_BYTES = 512 * 1024;
+// A forced re-restore clears outputPaused and the ack-stall timer, so a viewer
+// that never completes restore would otherwise re-trigger the pending budget and
+// be re-restored forever: the ack-stall watchdog needs outputPaused to fire, and
+// the heartbeat cannot see a backgrounded tab (it still pongs). Cap consecutive
+// forced re-restores; past the limit, terminate the viewer exactly like the
+// ack-stall watchdog does.
+const OUTPUT_VIEWER_FORCED_RESTORE_LIMIT = 3;
 
 function getWebSocketTransportSocket(ws: WebSocket): Socket | null {
 	const transportSocket = (ws as WebSocket & { _socket?: Socket })._socket;
@@ -192,6 +242,10 @@ export function createTerminalWebSocketBridge({
 	validateUpgradeSession,
 	heartbeatIntervalMs,
 	ackStallTimeoutMs,
+	viewerPauseBudgetBytes,
+	viewerPauseBudgetMs,
+	viewerPendingBudgetBytes,
+	forcedRestoreLimit,
 }: CreateTerminalWebSocketBridgeRequest): TerminalWebSocketBridge {
 	const activeSockets = new Set<Socket>();
 	const terminalStreamStates = new Map<string, TerminalStreamState>();
@@ -207,6 +261,10 @@ export function createTerminalWebSocketBridge({
 	const controlServer = new WebSocketServer({ noServer: true });
 	const resolvedHeartbeatIntervalMs = heartbeatIntervalMs ?? TERMINAL_WS_HEARTBEAT_INTERVAL_MS;
 	const resolvedAckStallTimeoutMs = ackStallTimeoutMs ?? TERMINAL_WS_ACK_STALL_TIMEOUT_MS;
+	const resolvedViewerPauseBudgetBytes = viewerPauseBudgetBytes ?? OUTPUT_VIEWER_PAUSE_BUDGET_BYTES;
+	const resolvedViewerPauseBudgetMs = viewerPauseBudgetMs ?? OUTPUT_VIEWER_PAUSE_BUDGET_MS;
+	const resolvedViewerPendingBudgetBytes = viewerPendingBudgetBytes ?? OUTPUT_VIEWER_PENDING_BUDGET_BYTES;
+	const resolvedForcedRestoreLimit = forcedRestoreLimit ?? OUTPUT_VIEWER_FORCED_RESTORE_LIMIT;
 	const stopIoHeartbeat = startWebSocketHeartbeat(ioServer, resolvedHeartbeatIntervalMs);
 	const stopControlHeartbeat = startWebSocketHeartbeat(controlServer, resolvedHeartbeatIntervalMs);
 
@@ -242,7 +300,9 @@ export function createTerminalWebSocketBridge({
 		const created: TerminalViewerState = {
 			clientId,
 			pendingOutputChunks: [],
+			pendingOutputBytes: 0,
 			restoreComplete: false,
+			forcedRestoreCount: 0,
 			ioState: null,
 			ioSocket: null,
 			controlSocket: null,
@@ -255,6 +315,7 @@ export function createTerminalWebSocketBridge({
 					created.ioState.enqueueOutput(chunk);
 				}
 				created.pendingOutputChunks = [];
+				created.pendingOutputBytes = 0;
 			},
 		};
 		streamState.viewers.set(clientId, created);
@@ -281,6 +342,7 @@ export function createTerminalWebSocketBridge({
 		clientId: string,
 		taskId: string,
 		terminalManager: TerminalSessionService,
+		onPauseBudgetExceeded: () => void,
 	): IoOutputState => {
 		let pendingOutputChunks: Buffer[] = [];
 		let outputFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -291,6 +353,10 @@ export function createTerminalWebSocketBridge({
 		// byte counts as progress and rearms it; expiry means the viewer is not
 		// draining at all and must not keep the shared PTY blocked.
 		let ackStallTimer: ReturnType<typeof setTimeout> | null = null;
+		// Bounds how long this viewer may hold the PTY paused. Unlike the ack-stall
+		// timer above, acks do not rearm it: partial progress still keeps the agent
+		// blocked, so total pause time is capped and the timer restarts with each pause.
+		let pauseBudgetTimer: ReturnType<typeof setTimeout> | null = null;
 		// Same idea as VS Code terminal flow control: count output that has been sent
 		// but not yet acknowledged as committed by the terminal renderer. We also look
 		// at the websocket's own bufferedAmount so we catch both xterm lag and socket lag.
@@ -327,6 +393,28 @@ export function createTerminalWebSocketBridge({
 			ackStallTimer.unref?.();
 		};
 
+		const clearPauseBudgetTimer = () => {
+			if (pauseBudgetTimer !== null) {
+				clearTimeout(pauseBudgetTimer);
+				pauseBudgetTimer = null;
+			}
+		};
+
+		const armPauseBudgetTimer = () => {
+			clearPauseBudgetTimer();
+			pauseBudgetTimer = setTimeout(() => {
+				pauseBudgetTimer = null;
+				if (!outputPaused || ws.readyState !== ws.OPEN) {
+					return;
+				}
+				// This viewer has held the PTY paused for its entire budget, so the
+				// agent has been blocked on stdout the whole time. Release the pause
+				// and re-restore this viewer from a snapshot instead of waiting longer.
+				onPauseBudgetExceeded();
+			}, resolvedViewerPauseBudgetMs);
+			pauseBudgetTimer.unref?.();
+		};
+
 		const clearResumeCheck = () => {
 			if (resumeCheckTimer !== null) {
 				clearTimeout(resumeCheckTimer);
@@ -348,6 +436,7 @@ export function createTerminalWebSocketBridge({
 				outputPaused = false;
 				clearResumeCheck();
 				clearAckStallTimer();
+				clearPauseBudgetTimer();
 				streamState.backpressuredViewerIds.delete(clientId);
 				if (streamState.backpressuredViewerIds.size === 0) {
 					terminalManager.resumeOutput(taskId);
@@ -382,7 +471,15 @@ export function createTerminalWebSocketBridge({
 				if (!previouslyPaused) {
 					terminalManager.pauseOutput(taskId);
 				}
+				// A single chunk can overshoot the watermarks by more than the entire
+				// budget; re-restore immediately instead of pausing on a deficit that
+				// cannot drain in time.
+				if (unacknowledgedOutputBytes >= resolvedViewerPauseBudgetBytes) {
+					onPauseBudgetExceeded();
+					return;
+				}
 				armAckStallTimer();
+				armPauseBudgetTimer();
 				scheduleResumeCheck();
 			}
 		};
@@ -433,6 +530,21 @@ export function createTerminalWebSocketBridge({
 				}
 				checkResumeAfterBackpressure();
 			},
+			// Drop everything buffered for this viewer and reset its flow control so
+			// the caller can re-restore it. Backpressure bookkeeping on streamState
+			// is the caller's job, because the PTY only resumes when no viewer is left.
+			discardOutputForReRestore: () => {
+				if (outputFlushTimer !== null) {
+					clearTimeout(outputFlushTimer);
+					outputFlushTimer = null;
+				}
+				pendingOutputChunks = [];
+				clearResumeCheck();
+				clearAckStallTimer();
+				clearPauseBudgetTimer();
+				outputPaused = false;
+				unacknowledgedOutputBytes = 0;
+			},
 			dispose: () => {
 				if (outputFlushTimer !== null) {
 					clearTimeout(outputFlushTimer);
@@ -440,6 +552,7 @@ export function createTerminalWebSocketBridge({
 				}
 				clearResumeCheck();
 				clearAckStallTimer();
+				clearPauseBudgetTimer();
 				if (outputPaused) {
 					outputPaused = false;
 					streamState.backpressuredViewerIds.delete(clientId);
@@ -450,6 +563,72 @@ export function createTerminalWebSocketBridge({
 				pendingOutputChunks = [];
 			},
 		};
+	};
+
+	const sendRestoreToViewer = (
+		viewerState: TerminalViewerState,
+		taskId: string,
+		terminalManager: TerminalSessionService,
+		forceReapply: boolean,
+	): void => {
+		const controlSocket = viewerState.controlSocket;
+		if (!controlSocket) {
+			return;
+		}
+		void terminalManager
+			.getRestoreSnapshot(taskId)
+			.then((snapshot) => {
+				sendControlMessage(controlSocket, {
+					type: "restore",
+					snapshot: snapshot?.snapshot ?? "",
+					cols: snapshot?.cols ?? null,
+					rows: snapshot?.rows ?? null,
+					// A forced re-restore replaces output the viewer never committed, so
+					// it must be applied unconditionally. Omitting restoreGeneration is
+					// what guarantees that: clients skip restores whose generation they
+					// already applied, and this one must not be skipped.
+					restoreGeneration: forceReapply ? undefined : snapshot?.restoreGeneration,
+				});
+			})
+			.catch(() => {
+				sendControlMessage(controlSocket, {
+					type: "restore",
+					snapshot: "",
+					cols: null,
+					rows: null,
+				});
+			});
+	};
+
+	// Recovery for a viewer that exceeded its pause or pending budget: drop
+	// everything buffered for it, release its claim on the shared PTY, and resync
+	// it from a snapshot. The socket stays open and no other viewer is affected;
+	// the stalled viewer loses scrollback it never rendered, the agent keeps running.
+	const reRestoreViewer = (
+		streamState: TerminalStreamState,
+		viewerState: TerminalViewerState,
+		taskId: string,
+		terminalManager: TerminalSessionService,
+	): void => {
+		viewerState.ioState?.discardOutputForReRestore();
+		viewerState.pendingOutputChunks = [];
+		viewerState.pendingOutputBytes = 0;
+		viewerState.restoreComplete = false;
+		const wasBackpressured = streamState.backpressuredViewerIds.delete(viewerState.clientId);
+		if (wasBackpressured && streamState.backpressuredViewerIds.size === 0) {
+			terminalManager.resumeOutput(taskId);
+		}
+		if (viewerState.forcedRestoreCount >= resolvedForcedRestoreLimit) {
+			// Every re-restore attempt so far ended with this viewer still unable to
+			// complete restore, so it cannot recover and must not keep generating
+			// snapshot work forever. Fall back to the ack-stall watchdog's behavior:
+			// terminate the io socket and let the normal close path clean up. A
+			// returning tab reconnects and gets a fresh restore.
+			viewerState.ioSocket?.terminate();
+			return;
+		}
+		viewerState.forcedRestoreCount += 1;
+		sendRestoreToViewer(viewerState, taskId, terminalManager, true);
 	};
 
 	const ensureOutputListener = (
@@ -471,6 +650,10 @@ export function createTerminalWebSocketBridge({
 						continue;
 					}
 					viewerState.pendingOutputChunks.push(chunk);
+					viewerState.pendingOutputBytes += chunk.byteLength;
+					if (viewerState.pendingOutputBytes > resolvedViewerPendingBudgetBytes) {
+						reRestoreViewer(streamState, viewerState, taskId, terminalManager);
+					}
 				}
 			},
 		});
@@ -532,7 +715,9 @@ export function createTerminalWebSocketBridge({
 		const viewerState = getOrCreateViewerState(streamState, clientId);
 		const previousIoSocket = viewerState.ioSocket;
 		viewerState.ioState?.dispose();
-		viewerState.ioState = createIoOutputState(ws, streamState, clientId, taskId, terminalManager);
+		viewerState.ioState = createIoOutputState(ws, streamState, clientId, taskId, terminalManager, () =>
+			reRestoreViewer(streamState, viewerState, taskId, terminalManager),
+		);
 		viewerState.ioSocket = ws;
 		viewerState.flushPendingOutput();
 		ensureOutputListener(streamState, taskId, terminalManager);
@@ -575,6 +760,8 @@ export function createTerminalWebSocketBridge({
 		const previousControlSocket = viewerState.controlSocket;
 		viewerState.restoreComplete = false;
 		viewerState.pendingOutputChunks = [];
+		viewerState.pendingOutputBytes = 0;
+		viewerState.forcedRestoreCount = 0;
 		viewerState.controlSocket = ws;
 		ensureOutputListener(streamState, taskId, terminalManager);
 		viewerState.detachControlListener?.();
@@ -596,25 +783,7 @@ export function createTerminalWebSocketBridge({
 			previousControlSocket.close(1000, "Replaced by newer terminal control connection.");
 		}
 
-		void terminalManager
-			.getRestoreSnapshot(taskId)
-			.then((snapshot) => {
-				sendControlMessage(ws, {
-					type: "restore",
-					snapshot: snapshot?.snapshot ?? "",
-					cols: snapshot?.cols ?? null,
-					rows: snapshot?.rows ?? null,
-					restoreGeneration: snapshot?.restoreGeneration,
-				});
-			})
-			.catch(() => {
-				sendControlMessage(ws, {
-					type: "restore",
-					snapshot: "",
-					cols: null,
-					rows: null,
-				});
-			});
+		sendRestoreToViewer(viewerState, taskId, terminalManager, false);
 
 		ws.on("message", (rawMessage: RawData) => {
 			const message = parseWebSocketPayload(rawMessage);
@@ -643,6 +812,9 @@ export function createTerminalWebSocketBridge({
 
 			if (message.type === "restore_complete") {
 				viewerState.restoreComplete = true;
+				// A completed restore is genuine progress: the viewer recovered, so a
+				// much later unrelated overflow must not count against earlier ones.
+				viewerState.forcedRestoreCount = 0;
 				viewerState.flushPendingOutput();
 			}
 		});
