@@ -42,6 +42,8 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 				defaultArgs: [],
 				installed: true,
 				configured: selectedAgentId === "grok",
+			},
+			{
 				id: "pi",
 				label: "Pi",
 				binary: "pi",
@@ -49,6 +51,8 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 				defaultArgs: [],
 				installed: true,
 				configured: selectedAgentId === "pi",
+			},
+			{
 				id: "cline-cli",
 				label: "Cline CLI",
 				binary: "cline",

@@ -313,7 +313,7 @@ async function startKanbanServer(input: { cwd: string; homeDir: string; port: nu
 }
 
 async function connectRuntimeStream(url: string): Promise<RuntimeStreamClient> {
-	const socket = new WebSocket(url);
+	const socket = new WebSocket(url, { headers: { origin: new URL(url.replace(/^wss:/, "https:").replace(/^ws:/, "http:")).origin } });
 	const emitter = new EventEmitter();
 	const queue: RuntimeStateStreamMessage[] = [];
 

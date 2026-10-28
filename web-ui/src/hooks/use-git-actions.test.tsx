@@ -32,7 +32,6 @@ vi.mock("@/runtime/workspace-state-query", () => ({
 interface HookSnapshot {
 	handleCommitTask: UseGitActionsResult["handleCommitTask"];
 	handleAgentCommitTask: UseGitActionsResult["handleAgentCommitTask"];
-	runAutoReviewGitAction: UseGitActionsResult["runAutoReviewGitAction"];
 }
 
 function createGitHistoryResult(): UseGitActionsResult["gitHistory"] {
@@ -157,6 +156,8 @@ function createSessionSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}
 		lastHookAt: null,
 		latestHookActivity: null,
 		warningMessage: null,
+		modelId: null,
+		reasoningEffort: null,
 		...overrides,
 	};
 }
@@ -209,9 +210,8 @@ function HookHarness({
 		onSnapshot({
 			handleCommitTask: gitActions.handleCommitTask,
 			handleAgentCommitTask: gitActions.handleAgentCommitTask,
-			runAutoReviewGitAction: gitActions.runAutoReviewGitAction,
 		});
-	}, [gitActions.handleAgentCommitTask, gitActions.handleCommitTask, gitActions.runAutoReviewGitAction, onSnapshot]);
+	}, [gitActions.handleAgentCommitTask, gitActions.handleCommitTask, onSnapshot]);
 
 	return null;
 }
@@ -261,8 +261,17 @@ describe("useGitActions", () => {
 		return { sendTaskSessionInput, sendTaskChatMessage };
 	}
 
+	function advanceSessionAfterFirstRead(): void {
+		let reads = 0;
+		fetchWorkspaceStateMock.mockImplementation(async () => {
+			reads += 1;
+			return createWorkspaceState(
+				createSessionSummary(reads > 1 ? { lastOutputAt: 2_000, state: "running" } : {}),
+			);
+		});
+	}
+
 	beforeEach(() => {
-		showAppToastMock.mockReset();
 		useGitHistoryDataMock.mockReset();
 		useGitHistoryDataMock.mockReturnValue(createGitHistoryResult());
 		fetchWorkspaceStateMock.mockReset();
@@ -378,6 +387,7 @@ describe("useGitActions", () => {
 	});
 
 	it("routes a terminal card override to the session when the project default is cline", async () => {
+		advanceSessionAfterFirstRead();
 		const { sendTaskSessionInput, sendTaskChatMessage } = await commitFromReviewCard({
 			projectAgentId: "cline",
 			cardAgentId: "codex",
@@ -410,6 +420,7 @@ describe("useGitActions", () => {
 	});
 
 	it("routes a card with no agent override through the session when the project default is a terminal agent", async () => {
+		advanceSessionAfterFirstRead();
 		const { sendTaskSessionInput, sendTaskChatMessage } = await commitFromReviewCard({
 			projectAgentId: "codex",
 		});
@@ -460,18 +471,15 @@ describe("useGitActions", () => {
 			sendTaskSessionInput,
 		});
 
-		let submitted: boolean | undefined;
 		await act(async () => {
-			const actionPromise = snapshot.runAutoReviewGitAction("task-1", "commit");
+			snapshot.handleCommitTask("task-1");
 			await flushUntil(() => sessionInputCalls.length > 0);
 			expect(sessionInputCalls.some((call) => call.text !== "\r")).toBe(true);
 			await vi.advanceTimersByTimeAsync(200);
 			expect(sessionInputCalls.some((call) => call.text === "\r")).toBe(false);
 			await vi.advanceTimersByTimeAsync(250);
-			submitted = await actionPromise;
 		});
 
-		expect(submitted).toBe(true);
 		const enterCall = sessionInputCalls.find((call) => call.text === "\r");
 		expect(enterCall).toBeDefined();
 		expect((enterCall?.at ?? 0) - startedAt).toBeGreaterThanOrEqual(pasteLandedAfterMs);
@@ -499,15 +507,12 @@ describe("useGitActions", () => {
 			sendTaskSessionInput,
 		});
 
-		let submitted: boolean | undefined;
 		await act(async () => {
-			const actionPromise = snapshot.runAutoReviewGitAction("task-1", "commit");
+			snapshot.handleCommitTask("task-1");
 			await flushUntil(() => sessionInputCalls.length > 0);
 			await vi.advanceTimersByTimeAsync(10_000);
-			submitted = await actionPromise;
 		});
 
-		expect(submitted).toBe(false);
 		expect(sessionInputCalls.filter((call) => call.text === "\r")).toHaveLength(2);
 		expect(showAppToastMock).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -540,16 +545,13 @@ describe("useGitActions", () => {
 			sendTaskSessionInput,
 		});
 
-		let submitted: boolean | undefined;
 		await act(async () => {
-			const actionPromise = snapshot.runAutoReviewGitAction("task-1", "commit");
+			snapshot.handleCommitTask("task-1");
 			await flushUntil(() => sessionInputCalls.some((call) => call.text === "\r"));
 			expect(sessionInputCalls.filter((call) => call.text === "\r")).toHaveLength(1);
 			expect(Date.now() - startedAt).toBeLessThan(200);
-			submitted = await actionPromise;
 		});
 
-		expect(submitted).toBe(true);
 		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
 });

@@ -136,8 +136,9 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 			effortOverride: "flag",
 			providerOverride: "none",
 			docsUrl: "https://docs.x.ai/build/overview",
+		},
 	},
-	},
+	{
 		id: "pi",
 		label: "Pi",
 		binary: "pi",
@@ -172,6 +173,12 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		baseArgs: [],
 		autonomousArgs: ["--permission-mode", "dangerous"],
 		installUrl: "https://docs.devin.ai/cli",
+		capabilities: {
+			modelOverride: "none",
+			effortOverride: "none",
+			providerOverride: "none",
+			docsUrl: "https://docs.devin.ai/cli",
+		},
 	},
 ];
 

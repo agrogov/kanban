@@ -193,7 +193,7 @@ describe("BoardCard", () => {
 			return { x: 0, y: 0, left: 0, top: 0, width, height: 32, right: width, bottom: 32, toJSON: () => ({}) };
 		});
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard({ prompt: "Review API changes||Description at fractional scale" })}
 					index={0}
@@ -209,7 +209,7 @@ describe("BoardCard", () => {
 		mockMeasureWidths = [0, 0, 0];
 		const description = "This description contains enough words to wrap and truncate in a narrow card.";
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard({ prompt: `Review API changes||${description}` })}
 					index={0}
@@ -220,7 +220,7 @@ describe("BoardCard", () => {
 		const wideText = container.textContent;
 		mockMeasureWidths = [80.25, 80.25, 80.25];
 		await act(async () => {
-			root.render(
+			renderWithProviders(
 				<BoardCard
 					card={createCard({ prompt: `Review API changes||${description}` })}
 					index={0}

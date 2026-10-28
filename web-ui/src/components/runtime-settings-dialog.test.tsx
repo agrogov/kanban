@@ -209,10 +209,16 @@ const savedClineOauthConfig = {
 			label: "Grok Build",
 			binary: "grok",
 			command: "grok",
+			installed: true,
+		},
+		{
 			id: "pi",
 			label: "Pi",
 			binary: "pi",
 			command: "pi",
+			installed: true,
+		},
+		{
 			id: "cline-cli",
 			label: "Cline CLI",
 			binary: "cline",
@@ -269,7 +275,6 @@ describe("RuntimeSettingsDialog", () => {
 	});
 
 	it("lists Grok Build as a launch-supported agent", async () => {
-	it("lists Cline CLI as a launch-supported agent", async () => {
 		await act(async () => {
 			root.render(
 				<RuntimeSettingsDialog
@@ -285,6 +290,20 @@ describe("RuntimeSettingsDialog", () => {
 			element.textContent?.includes("Grok Build"),
 		);
 		expect(grokRow).toBeTruthy();
+	});
+
+	it("lists Cline CLI as a launch-supported agent", async () => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open={true}
+					workspaceId={"workspace-1"}
+					initialConfig={savedClineOauthConfig}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+
 		const clineCliRow = Array.from(document.body.querySelectorAll('[role="button"]')).find((element) =>
 			element.textContent?.includes("Cline CLI"),
 		);

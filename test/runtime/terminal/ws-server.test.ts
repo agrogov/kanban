@@ -96,8 +96,12 @@ interface QueuedWebSocket {
 	events: EventEmitter;
 }
 
+function wsHttpOrigin(url: string): string {
+	return new URL(url.replace(/^wss:/, "https:").replace(/^ws:/, "http:")).origin;
+}
+
 async function openQueuedWebSocket(url: string): Promise<QueuedWebSocket> {
-	const socket = new WebSocket(url);
+	const socket = new WebSocket(url, { headers: { origin: wsHttpOrigin(url) } });
 	const queue: RawData[] = [];
 	const events = new EventEmitter();
 	socket.on("message", (message) => {
@@ -215,9 +219,15 @@ async function attemptUpgradeAndReadResponse(
 			reject(new Error(`Timed out waiting for upgrade response: ${url}`));
 		}, timeoutMs);
 
-		const ws = new WebSocket(url, {
-			headers: cookieHeader ? { cookie: cookieHeader } : undefined,
-		});
+		const ws = new WebSocket(
+			url,
+			{
+				headers: {
+					...(cookieHeader ? { cookie: cookieHeader } : {}),
+					origin: wsHttpOrigin(url),
+				},
+			},
+		);
 
 		let statusLine = "";
 
@@ -542,9 +552,9 @@ describe("createTerminalWebSocketBridge", () => {
 			const controlUrl = `${heartbeatUrl}/api/terminal/control?taskId=${TASK_ID}&workspaceId=${WORKSPACE_ID}&clientId=zombie`;
 
 			// Zombie viewer: connected, but never acks output and never replies to pings.
-			ioSocket = new WebSocket(ioUrl, { autoPong: false });
+			ioSocket = new WebSocket(ioUrl, { autoPong: false, headers: { origin: wsHttpOrigin(ioUrl) } });
 			await once(ioSocket, "open");
-			controlSocket = new WebSocket(controlUrl, { autoPong: false });
+			controlSocket = new WebSocket(controlUrl, { autoPong: false, headers: { origin: wsHttpOrigin(controlUrl) } });
 			// Register before "open" resolves: the server sends restore immediately.
 			const restoreReceived = new Promise<void>((resolve) => {
 				controlSocket?.on("message", (message) => {

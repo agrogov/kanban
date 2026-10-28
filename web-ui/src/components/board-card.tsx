@@ -571,8 +571,8 @@ export function BoardCard({
 											onBlur={submitTitle}
 											onKeyDown={handleTitleKeyDown}
 											onMouseDown={(event) => {
-											event.stopPropagation();
-										}}
+												event.stopPropagation();
+											}}
 											className="h-7 w-full rounded-md border border-border-focus bg-surface-2 px-2 text-sm font-medium text-text-primary focus:outline-none"
 										/>
 									) : onSaveTitle ? (
@@ -590,10 +590,10 @@ export function BoardCard({
 												aria-label="Edit task title"
 												onMouseDown={stopEvent}
 												onClick={(event) => {
-												stopEvent(event);
-												setDraftTitle(card.title);
-												setIsEditingTitle(true);
-											}}
+													stopEvent(event);
+													setDraftTitle(card.title);
+													setIsEditingTitle(true);
+												}}
 												className={cn(
 													"shrink-0 cursor-pointer rounded-sm p-0.5 text-text-tertiary hover:text-text-primary focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
 													isHovered ? "opacity-100" : "opacity-0",

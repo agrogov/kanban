@@ -2108,7 +2108,6 @@ const piAdapter: AgentSessionAdapter = {
 	},
 };
 
-
 // Cline CLI (`cline` 3.x) as a PTY-driven task agent, distinct from the
 // embedded Cline SDK runtime ("cline"). Runs the interactive TUI so card
 // terminals stay open for follow-ups after the first turn completes.

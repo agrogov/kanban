@@ -784,6 +784,14 @@ describe("prepareAgentLaunch hook strategies", () => {
 			taskId: "task-grok",
 			agentId: "grok",
 			binary: "grok",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			resumeFromTrash: true,
+		});
+		expect(grokLaunch.args).toContain("--continue");
+		expect(grokLaunch.args).not.toContain("--resume");
+
 		const piLaunch = await prepareAgentLaunch({
 			taskId: "task-pi",
 			agentId: "pi",
@@ -793,8 +801,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 			resumeFromTrash: true,
 		});
-		expect(grokLaunch.args).toContain("--continue");
-		expect(grokLaunch.args).not.toContain("--resume");
 		expect(piLaunch.args).toContain("--continue");
 		expect(piLaunch.args).not.toContain("--resume");
 

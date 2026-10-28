@@ -48,7 +48,7 @@ describe("agent-registry", () => {
 		const detected = detectInstalledCommands();
 
 		expect(detected).toEqual(["claude"]);
-		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledTimes(9);
+		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledTimes(12);
 	});
 
 	it("treats shell-only agents as unavailable", () => {
@@ -225,6 +225,8 @@ describe("buildAgentCapabilityReport", () => {
 			providerOverride: "flag",
 			docsUrl: "https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/usage.md",
 		});
+	});
+
 	it("reports the Cline CLI agent as launch-supported with flag overrides, gated on binary detection", () => {
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
 

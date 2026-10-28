@@ -6,7 +6,6 @@ import { resolve } from "node:path";
 import { Command, Option } from "commander";
 import ora, { type Ora } from "ora";
 import packageJson from "../package.json" with { type: "json" };
-import type { ClineTaskSessionService } from "./cline-sdk/cline-task-session-service";
 import { ensureDaemonLogDirectory, getDaemonLogPath } from "./cli/daemon-logs";
 import {
 	getOptionWasProvided,
@@ -33,6 +32,7 @@ import {
 	replaceManagedProcesses,
 	unregisterManagedProcess,
 } from "./cli/process-registry";
+import type { ClineTaskSessionService } from "./cline-sdk/cline-task-session-service";
 import { disposeCliTelemetryService } from "./cline-sdk/cline-telemetry-service.js";
 import { registerAgentsCommand } from "./commands/agents";
 import { registerHooksCommand } from "./commands/hooks";
