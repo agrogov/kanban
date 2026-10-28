@@ -208,9 +208,9 @@ export const RUNTIME_LAUNCH_UNSUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 
 // Derived from the catalog plus the exclusion set above, so RUNTIME_AGENT_CATALOG and the launch
 // set can never drift apart as entries are added.
-export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = RUNTIME_AGENT_CATALOG
-	.filter((entry) => !RUNTIME_LAUNCH_UNSUPPORTED_AGENT_IDS.includes(entry.id))
-	.map((entry) => entry.id);
+export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = RUNTIME_AGENT_CATALOG.filter(
+	(entry) => !RUNTIME_LAUNCH_UNSUPPORTED_AGENT_IDS.includes(entry.id),
+).map((entry) => entry.id);
 
 const RUNTIME_LAUNCH_SUPPORTED_AGENT_ID_SET = new Set<RuntimeAgentId>(RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS);
 
