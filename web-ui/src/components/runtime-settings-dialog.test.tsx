@@ -542,7 +542,9 @@ describe("RuntimeSettingsDialog", () => {
 		const rowIndices = expectedOrder.map(rowIndexOfLabel);
 
 		expect(rowIndices.every((rowIndex) => rowIndex !== -1)).toBe(true);
-		expect(rowIndices).toStrictEqual(rowIndices.toSorted((left, right) => left - right));
+		const expectedAscending = [...rowIndices].sort((left: number, right: number) => left - right);
+
+		expect(rowIndices).toStrictEqual(expectedAscending);
 	});
 
 	it("lists Pi as a launch-supported agent", async () => {
