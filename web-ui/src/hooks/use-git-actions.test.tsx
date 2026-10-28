@@ -29,6 +29,10 @@ vi.mock("@/runtime/workspace-state-query", () => ({
 	fetchWorkspaceState: fetchWorkspaceStateMock,
 }));
 
+// Mirrors the private SESSION_PROMPT_CONFIRM_TIMEOUT_MS in use-git-actions.ts: a delivery
+// confirmed inside one confirm window is a submitted prompt, a timed-out window is not.
+const SESSION_PROMPT_CONFIRM_TIMEOUT_MS = 2_000;
+
 interface HookSnapshot {
 	handleCommitTask: UseGitActionsResult["handleCommitTask"];
 	handleAgentCommitTask: UseGitActionsResult["handleAgentCommitTask"];
@@ -225,10 +229,15 @@ describe("useGitActions", () => {
 		projectAgentId: RuntimeConfigResponse["selectedAgentId"];
 		cardAgentId?: RuntimeAgentId;
 	}): Promise<{
+		sessionInputCalls: Array<{ text: string; at: number }>;
 		sendTaskSessionInput: ReturnType<typeof vi.fn>;
 		sendTaskChatMessage: ReturnType<typeof vi.fn>;
 	}> {
-		const sendTaskSessionInput = vi.fn(async () => ({ ok: true }));
+		const sessionInputCalls: Array<{ text: string; at: number }> = [];
+		const sendTaskSessionInput = vi.fn(async (_taskId: string, text: string) => {
+			sessionInputCalls.push({ text, at: Date.now() });
+			return { ok: true };
+		});
 		const sendTaskChatMessage = vi.fn(async () => ({ ok: true }));
 		let latestSnapshot: HookSnapshot | null = null;
 
@@ -253,25 +262,26 @@ describe("useGitActions", () => {
 
 		await act(async () => {
 			latestSnapshot?.handleCommitTask("task-1");
-			await Promise.resolve();
-			await Promise.resolve();
-			await Promise.resolve();
+			await waitForSessionEnter(sessionInputCalls);
 		});
 
-		return { sendTaskSessionInput, sendTaskChatMessage };
+		return { sessionInputCalls, sendTaskSessionInput, sendTaskChatMessage };
 	}
 
-	function advanceSessionAfterFirstRead(): void {
+	function advanceSessionAfterNReads(afterReads: number): void {
 		let reads = 0;
 		fetchWorkspaceStateMock.mockImplementation(async () => {
 			reads += 1;
 			return createWorkspaceState(
-				createSessionSummary(reads > 1 ? { lastOutputAt: 2_000, state: "running" } : {}),
+				createSessionSummary(
+					reads > afterReads ? { lastOutputAt: 2_000 + reads, state: "running" } : { lastOutputAt: 1_000 + reads },
+				),
 			);
 		});
 	}
 
 	beforeEach(() => {
+		showAppToastMock.mockReset();
 		useGitHistoryDataMock.mockReset();
 		useGitHistoryDataMock.mockReturnValue(createGitHistoryResult());
 		fetchWorkspaceStateMock.mockReset();
@@ -341,6 +351,20 @@ describe("useGitActions", () => {
 		await Promise.resolve();
 	}
 
+	// Give the delivery-confirm loop as many polling rounds as it needs, so the tests do not
+	// depend on how many fetchWorkspaceState reads a given path happens to make.
+	async function waitForSessionEnter(sessionInputCalls: Array<{ text: string; at: number }>): Promise<void> {
+		for (let poll = 0; poll < 40; poll += 1) {
+			await flushUntil(() => sessionInputCalls.some((call) => call.text === "\r"));
+			if (sessionInputCalls.some((call) => call.text === "\r")) {
+				return;
+			}
+			await new Promise<void>((resolve) => {
+				window.setTimeout(resolve, 50);
+			});
+		}
+	}
+
 	it("sends commit prompts through the native cline chat API", async () => {
 		const sendTaskSessionInput = vi.fn(async () => ({ ok: true }));
 		const sendTaskChatMessage = vi.fn(async () => ({ ok: true }));
@@ -387,8 +411,9 @@ describe("useGitActions", () => {
 	});
 
 	it("routes a terminal card override to the session when the project default is cline", async () => {
-		advanceSessionAfterFirstRead();
-		const { sendTaskSessionInput, sendTaskChatMessage } = await commitFromReviewCard({
+		advanceSessionAfterNReads(1);
+		const startedAt = Date.now();
+		const { sessionInputCalls, sendTaskSessionInput, sendTaskChatMessage } = await commitFromReviewCard({
 			projectAgentId: "cline",
 			cardAgentId: "codex",
 		});
@@ -399,13 +424,9 @@ describe("useGitActions", () => {
 			mode: "paste",
 		});
 
-		await act(async () => {
-			await new Promise<void>((resolve) => {
-				window.setTimeout(resolve, 200);
-			});
-		});
-
-		expect(sendTaskSessionInput).toHaveBeenCalledWith("task-1", "\r", { appendNewline: false });
+		const enterCalls = sessionInputCalls.filter((call) => call.text === "\r");
+		expect(enterCalls).toHaveLength(1);
+		expect((enterCalls.at(0)?.at ?? 0) - startedAt).toBeLessThan(SESSION_PROMPT_CONFIRM_TIMEOUT_MS);
 		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
 
@@ -420,8 +441,9 @@ describe("useGitActions", () => {
 	});
 
 	it("routes a card with no agent override through the session when the project default is a terminal agent", async () => {
-		advanceSessionAfterFirstRead();
-		const { sendTaskSessionInput, sendTaskChatMessage } = await commitFromReviewCard({
+		advanceSessionAfterNReads(1);
+		const startedAt = Date.now();
+		const { sessionInputCalls, sendTaskSessionInput, sendTaskChatMessage } = await commitFromReviewCard({
 			projectAgentId: "codex",
 		});
 
@@ -431,13 +453,9 @@ describe("useGitActions", () => {
 			mode: "paste",
 		});
 
-		await act(async () => {
-			await new Promise<void>((resolve) => {
-				window.setTimeout(resolve, 200);
-			});
-		});
-
-		expect(sendTaskSessionInput).toHaveBeenCalledWith("task-1", "\r", { appendNewline: false });
+		const enterCalls = sessionInputCalls.filter((call) => call.text === "\r");
+		expect(enterCalls).toHaveLength(1);
+		expect((enterCalls.at(0)?.at ?? 0) - startedAt).toBeLessThan(SESSION_PROMPT_CONFIRM_TIMEOUT_MS);
 
 		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
@@ -480,14 +498,15 @@ describe("useGitActions", () => {
 			await vi.advanceTimersByTimeAsync(250);
 		});
 
-		const enterCall = sessionInputCalls.find((call) => call.text === "\r");
-		expect(enterCall).toBeDefined();
-		expect((enterCall?.at ?? 0) - startedAt).toBeGreaterThanOrEqual(pasteLandedAfterMs);
+		const enterCalls = sessionInputCalls.filter((call) => call.text === "\r");
+		expect(enterCalls).toHaveLength(1);
+		expect((enterCalls.at(0)?.at ?? 0) - startedAt).toBeGreaterThanOrEqual(pasteLandedAfterMs);
 		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
 
 	it("retries submit once and returns failure when the session never becomes active", async () => {
 		useDeliveryFakeTimers();
+		const startedAt = Date.now();
 		const sessionInputCalls: Array<{ text: string; at: number }> = [];
 		fetchWorkspaceStateMock.mockImplementation(async () => {
 			const pasteSent = sessionInputCalls.some((call) => call.text !== "\r");
@@ -513,7 +532,9 @@ describe("useGitActions", () => {
 			await vi.advanceTimersByTimeAsync(10_000);
 		});
 
-		expect(sessionInputCalls.filter((call) => call.text === "\r")).toHaveLength(2);
+		const enterCalls = sessionInputCalls.filter((call) => call.text === "\r");
+		expect(enterCalls).toHaveLength(2);
+		expect((enterCalls.at(1)?.at ?? 0) - startedAt).toBeGreaterThanOrEqual(SESSION_PROMPT_CONFIRM_TIMEOUT_MS);
 		expect(showAppToastMock).toHaveBeenCalledWith(
 			expect.objectContaining({
 				intent: "danger",
