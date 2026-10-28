@@ -3,6 +3,7 @@ import { realpathSync } from "node:fs";
 import packageJson from "../../package.json" with { type: "json" };
 
 import type { RuntimeAgentId } from "../core/api-contract";
+import { runtimeAgentIdSchema } from "../core/api-contract";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { resolveKanbanCommandParts } from "../core/kanban-command";
 import { buildShellCommandLine } from "../core/shell";
@@ -24,22 +25,10 @@ export interface RenderAppendSystemPromptOptions {
 	agentId?: RuntimeAgentId | null;
 }
 
-const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = [
-	"claude",
-	"codex",
-	"cline",
-	"cline-cli",
-	"droid",
-	"kiro",
-	"grok",
-	"pi",
-	"gemini",
-	"opencode",
-	"devin",
-];
-
 function isRuntimeAgentId(value: string): value is RuntimeAgentId {
-	return APPEND_PROMPT_AGENT_IDS.includes(value as RuntimeAgentId);
+	// zod types `options` as the agent-id literal union, which rejects a plain string argument.
+	const knownAgentIds: readonly string[] = runtimeAgentIdSchema.options;
+	return knownAgentIds.includes(value);
 }
 
 function resolveHomeAgentId(taskId: string): RuntimeAgentId | null {
