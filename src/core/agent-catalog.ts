@@ -199,21 +199,18 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	},
 ];
 
-// Temporarily keep launch support scoped to the core agent set.
-// Re-enable additional CLIs by uncommenting entries below when ready.
-export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
-	"cline",
-	"claude",
-	"codex",
-	"droid",
-	"kiro",
-	"grok",
-	"pi",
-	"cline-cli",
-	"devin",
-	// "opencode",
-	// "gemini",
-];
+/**
+ * The only catalog entries kept out of the launch set: neither has autonomous-mode approval wiring
+ * exercised end to end (opencode declares no autonomousArgs at all, and gemini's `--yolo` bypass
+ * has not been verified on our launch path). Add an id here once its flag is wired and tested.
+ */
+export const RUNTIME_LAUNCH_UNSUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = ["opencode", "gemini"];
+
+// Derived from the catalog plus the exclusion set above, so RUNTIME_AGENT_CATALOG and the launch
+// set can never drift apart as entries are added.
+export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = RUNTIME_AGENT_CATALOG
+	.filter((entry) => !RUNTIME_LAUNCH_UNSUPPORTED_AGENT_IDS.includes(entry.id))
+	.map((entry) => entry.id);
 
 const RUNTIME_LAUNCH_SUPPORTED_AGENT_ID_SET = new Set<RuntimeAgentId>(RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS);
 

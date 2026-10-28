@@ -55,6 +55,9 @@ const PROJECT_CONFIG_PARENT_DIR = ".cline";
 const PROJECT_CONFIG_DIR = "kanban";
 const PROJECT_CONFIG_FILENAME = "config.json";
 const DEFAULT_AGENT_ID: RuntimeAgentId = "cline";
+// Launch-supported terminal CLIs only: cline is DEFAULT_AGENT_ID (the embedded SDK runtime, already
+// the fallback), and opencode/gemini are not launch-supported yet, so a PATH holding just those two
+// auto-selects nothing and leaves the default cline runtime in place.
 const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = [
 	"claude",
 	"codex",
@@ -112,9 +115,13 @@ Steps:
 export function pickBestInstalledAgentIdFromDetected(detectedCommands: readonly string[]): RuntimeAgentId | null {
 	const detected = new Set(detectedCommands);
 	for (const agentId of AUTO_SELECT_AGENT_PRIORITY) {
+		// Every RuntimeAgentId owns a catalog entry with its own binary field (kiro-cli, cline, ...),
+		// so the lookup never falls back to the id itself.
 		const catalogEntry = getRuntimeAgentCatalogEntry(agentId);
-		const binary = catalogEntry?.binary ?? agentId;
-		if (detected.has(binary) || detected.has(agentId)) {
+		if (!catalogEntry) {
+			continue;
+		}
+		if (detected.has(catalogEntry.binary) || detected.has(agentId)) {
 			return agentId;
 		}
 	}
