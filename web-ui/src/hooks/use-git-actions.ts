@@ -71,7 +71,6 @@ export interface UseGitActionsResult {
 	handleOpenPrTask: (taskId: string) => void;
 	handleAgentCommitTask: (taskId: string) => void;
 	handleAgentOpenPrTask: (taskId: string) => void;
-	runAutoReviewGitAction: (taskId: string, action: TaskGitAction) => Promise<boolean>;
 	resetGitActionState: () => void;
 }
 
@@ -220,21 +219,16 @@ export function useGitActions({
 	);
 
 	const runTaskGitAction = useCallback(
-		async (
-			taskId: string,
-			action: TaskGitAction,
-			source: TaskGitActionSource,
-			options: { skipPendingGitActionLock?: boolean } = {},
-		) => {
+		async (taskId: string, action: TaskGitAction, source: TaskGitActionSource) => {
 			const taskLoadingState = taskGitActionLoadingByTaskId[taskId];
 			const actionInFlightSource = action === "commit" ? taskLoadingState?.commitSource : taskLoadingState?.prSource;
 			if (actionInFlightSource !== null && actionInFlightSource !== undefined) {
 				return false;
 			}
-			// Cross-tab lock: refuse a second git action while another one is armed on the
-			// card. The arming state is server-side, so every tab sees it.
+			// Cross-tab/runtime lock: refuse a manual git action while another one is
+			// armed on the card. The arming state is server-side, so every actor sees it.
 			const pendingGitAction = findCardSelection(board, taskId)?.card.pendingGitAction ?? null;
-			if (!options.skipPendingGitActionLock && pendingGitAction && !isPendingGitActionStale(pendingGitAction)) {
+			if (pendingGitAction && !isPendingGitActionStale(pendingGitAction)) {
 				return false;
 			}
 			setTaskGitActionLoading(taskId, action, source);
@@ -510,15 +504,6 @@ export function useGitActions({
 		}
 	}, [currentProjectId, isDiscardingHomeWorkingChanges, refreshGitHistory]);
 
-	const runAutoReviewGitAction = useCallback(
-		async (taskId: string, action: TaskGitAction) => {
-			// The auto-review loop persists the arming state itself before calling this,
-			// so it must bypass the pending-git-action lock it just set.
-			return await runTaskGitAction(taskId, action, "card", { skipPendingGitActionLock: true });
-		},
-		[runTaskGitAction],
-	);
-
 	const resetGitActionState = useCallback(() => {
 		setRunningGitAction(null);
 		setTaskGitActionLoadingByTaskId({});
@@ -562,7 +547,6 @@ export function useGitActions({
 		handleOpenPrTask,
 		handleAgentCommitTask,
 		handleAgentOpenPrTask,
-		runAutoReviewGitAction,
 		resetGitActionState,
 	};
 }
