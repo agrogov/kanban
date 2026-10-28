@@ -1,5 +1,9 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
-import { getRuntimeAgentCatalogEntry, getRuntimeLaunchAgentDisplayOrder } from "@runtime-agent-catalog";
+import {
+	getRuntimeAgentCatalogEntry,
+	getRuntimeLaunchAgentDisplayOrder,
+	isRuntimeAgentLaunchSupported,
+} from "@runtime-agent-catalog";
 import { Check } from "lucide-react";
 import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -291,57 +295,21 @@ function OnboardingMedia({
 	);
 }
 
+// Catalog blurb plus the agent's install hint (pi spells the command out next to its installUrl).
 function resolveInstallInstructions(agentId: RuntimeAgentId): string {
-	if (agentId === "cline") {
-		return "Built-in agent with support for any LLM provider. No CLI install needed.";
+	const entry = getRuntimeAgentCatalogEntry(agentId);
+	if (!entry) {
+		return "Install from the official docs.";
 	}
-	if (agentId === "cline-cli") {
-		return "Cline's terminal coding agent CLI with plan/act modes, MCP support, and any LLM provider.";
-	}
-	if (agentId === "claude") {
-		return "Anthropic's coding agent CLI with access to Claude models.";
-	}
-	if (agentId === "codex") {
-		return "OpenAI's coding agent CLI with access to the latest GPT models.";
-	}
-	if (agentId === "droid") {
-		return "Factory's coding agent with access to the latest frontier models.";
-	}
-	if (agentId === "kiro") {
-		return "Amazon's coding agent with access to the latest frontier models.";
-	}
-	if (agentId === "grok") {
-		return "xAI's Grok Build coding agent CLI.";
-	}
-	if (agentId === "pi") {
-		return "Install with npm i -g --ignore-scripts @earendil-works/pi-coding-agent or curl -fsSL https://pi.dev/install.sh | sh.";
-	}
-	if (agentId === "devin") {
-		return "Cognition's autonomous software engineer CLI.";
-	}
-	return "Install from the official docs.";
+	return [entry.description, entry.installHint].filter((part) => part !== undefined && part !== "").join(" ");
 }
 
 function getInstallLinkLabel(agentId: RuntimeAgentId): string {
-	if (agentId === "cline-cli") {
-		return "Learn more";
-	}
-	if (agentId === "claude") {
-		return "Learn more";
-	}
-	if (agentId === "codex") {
-		return "Learn more";
-	}
-	if (agentId === "droid") {
-		return "Learn more";
-	}
-	if (agentId === "kiro") {
-		return "Learn more";
-	}
-	if (agentId === "grok" || agentId === "pi" || agentId === "devin") {
-		return "Learn more";
-	}
-	return "Install guide";
+	const entry = getRuntimeAgentCatalogEntry(agentId);
+	// Launch-supported CLIs link to their CLI docs; the embedded Cline runtime and the CLIs still
+	// outside the launch path link to their generic install page instead.
+	const hasInstallDocs = entry !== null && entry.embedded !== true && isRuntimeAgentLaunchSupported(agentId);
+	return hasInstallDocs ? "Learn more" : "Install guide";
 }
 
 export function TaskStartAgentOnboardingCarousel({

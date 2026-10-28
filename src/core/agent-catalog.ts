@@ -14,10 +14,14 @@ export interface RuntimeAgentCapabilities {
 export interface RuntimeAgentCatalogEntry {
 	id: RuntimeAgentId;
 	label: string;
+	/** One-line blurb shown wherever the agent is presented (onboarding, settings). */
+	description: string;
 	binary: string;
 	baseArgs: string[];
 	autonomousArgs: string[];
 	installUrl: string;
+	/** Exact install command(s) for this CLI, when there is one worth spelling out next to installUrl. */
+	installHint?: string;
 	/** Built-in runtime (e.g. the embedded Cline SDK) that needs no external binary detection. */
 	embedded?: boolean;
 	capabilities: RuntimeAgentCapabilities;
@@ -27,6 +31,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	{
 		id: "claude",
 		label: "Claude Code",
+		description: "Anthropic's coding agent CLI with access to Claude models.",
 		binary: "claude",
 		baseArgs: [],
 		autonomousArgs: ["--permission-mode", "auto"],
@@ -41,6 +46,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	{
 		id: "codex",
 		label: "OpenAI Codex",
+		description: "OpenAI's coding agent CLI with access to the latest GPT models.",
 		binary: "codex",
 		baseArgs: [],
 		autonomousArgs: ["--dangerously-bypass-approvals-and-sandbox"],
@@ -55,6 +61,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	{
 		id: "cline",
 		label: "Cline",
+		description: "Built-in agent with support for any LLM provider. No CLI install needed.",
 		binary: "cline",
 		baseArgs: [],
 		autonomousArgs: ["--auto-approve-all"],
@@ -71,6 +78,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	{
 		id: "cline-cli",
 		label: "Cline CLI",
+		description: "Cline's terminal coding agent CLI with plan/act modes, MCP support, and any LLM provider.",
 		binary: "cline",
 		baseArgs: [],
 		autonomousArgs: ["--auto-approve", "true"],
@@ -85,6 +93,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	{
 		id: "opencode",
 		label: "OpenCode",
+		description: "Terminal coding agent that runs any provider's models through one CLI.",
 		binary: "opencode",
 		baseArgs: [],
 		autonomousArgs: [],
@@ -99,6 +108,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	{
 		id: "droid",
 		label: "Factory Droid",
+		description: "Factory's coding agent with access to the latest frontier models.",
 		binary: "droid",
 		baseArgs: [],
 		autonomousArgs: ["--auto", "high"],
@@ -113,6 +123,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	{
 		id: "kiro",
 		label: "Kiro",
+		description: "Amazon's coding agent with access to the latest frontier models.",
 		binary: "kiro-cli",
 		baseArgs: ["chat"],
 		autonomousArgs: ["--trust-all-tools"],
@@ -127,6 +138,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	{
 		id: "grok",
 		label: "Grok Build",
+		description: "xAI's Grok Build coding agent CLI.",
 		binary: "grok",
 		baseArgs: [],
 		autonomousArgs: ["--always-approve"],
@@ -141,10 +153,13 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	{
 		id: "pi",
 		label: "Pi",
+		description: "Pi coding agent CLI, run from a terminal with any provider's models.",
 		binary: "pi",
 		baseArgs: [],
 		autonomousArgs: [],
 		installUrl: "https://pi.dev/",
+		installHint:
+			"Install with npm i -g --ignore-scripts @earendil-works/pi-coding-agent or curl -fsSL https://pi.dev/install.sh | sh.",
 		capabilities: {
 			modelOverride: "flag",
 			effortOverride: "flag",
@@ -155,6 +170,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	{
 		id: "gemini",
 		label: "Gemini CLI",
+		description: "Google's coding agent CLI with access to the latest Gemini models.",
 		binary: "gemini",
 		baseArgs: [],
 		autonomousArgs: ["--yolo"],
@@ -169,6 +185,7 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 	{
 		id: "devin",
 		label: "Devin",
+		description: "Cognition's autonomous software engineer CLI.",
 		binary: "devin",
 		baseArgs: [],
 		autonomousArgs: ["--permission-mode", "dangerous"],
