@@ -83,6 +83,7 @@ function parseAutoReviewMode(value: string | undefined): "commit" | "pr" | undef
 }
 
 const VALID_AGENT_IDS = runtimeAgentIdSchema.options;
+const AGENT_ID_OPTION_DESCRIPTION = `Agent override: ${VALID_AGENT_IDS.join(" | ")}. Use "default" to clear.`;
 
 function parseAgentId(value: string | undefined): RuntimeAgentId | null | undefined {
 	if (value === undefined) {
@@ -1145,6 +1146,67 @@ async function runTaskCommand(handler: () => Promise<JsonRecord>): Promise<void>
 	}
 }
 
+type TaskMutationFlags = {
+	title: string;
+	prompt: string;
+	baseRef: string;
+	promptRequired?: boolean;
+};
+
+const CREATE_TASK_MUTATION_FLAGS: TaskMutationFlags = {
+	title: "Task title.",
+	prompt: "Task prompt text.",
+	baseRef: "Task base branch/ref.",
+	promptRequired: true,
+};
+
+const UPDATE_TASK_MUTATION_FLAGS: TaskMutationFlags = {
+	title: "Replacement task title.",
+	prompt: "Replacement task prompt.",
+	baseRef: "Replacement base branch/ref.",
+};
+
+/**
+ * `task create` and `task update` mutate the same task fields, so they expose
+ * one flag surface declared here (commander renders --help in declaration
+ * order, so this order is what users see). Only the wording of the three
+ * field flags differs between the subcommands, plus create's required --prompt.
+ */
+function addTaskMutationOptions(command: Command, flags: TaskMutationFlags): void {
+	command.option("--title <text>", flags.title);
+
+	if (flags.promptRequired) {
+		// A new task cannot exist without a prompt, so create must require it.
+		command.requiredOption("--prompt <text>", flags.prompt);
+	} else {
+		// Update edits one field at a time, so --prompt stays optional.
+		command.option("--prompt <text>", flags.prompt);
+	}
+
+	command
+		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
+		.option("--base-ref <branch>", flags.baseRef)
+		.option("--start-in-plan-mode [value]", "Set plan mode (true|false). Flag-only implies true.")
+		.option("--auto-review-enabled [value]", "Enable auto-review behavior (true|false). Flag-only implies true.")
+		.option("--auto-review-mode <mode>", "Auto-review mode: commit | pr.", parseAutoReviewMode)
+		.option("--agent-id <id>", AGENT_ID_OPTION_DESCRIPTION)
+		.option(
+			"--provider <id>",
+			'Provider override for the task\'s agent. Use "default" to clear. Valid values depend on the agent.',
+		)
+		.option(
+			"--model <id>",
+			'Model override for the task\'s agent. Use "default" to clear. Valid values depend on the agent.',
+		)
+		.option(
+			"--effort <level>",
+			'Reasoning effort override for the task\'s agent. Use "default" or "inherit" to clear.',
+		)
+		.option("--cline-provider <id>", "(Deprecated: use --provider) Provider override for the task's agent.")
+		.option("--cline-model <id>", "(Deprecated: use --model) Model override for the task's agent.")
+		.option("--cline-reasoning-effort <level>", "(Deprecated: use --effort) Reasoning effort override.");
+}
+
 export function registerTaskCommand(program: Command): void {
 	const task = program.command("task").alias("tasks").description("Manage Kanban board tasks from the CLI.");
 
@@ -1168,159 +1230,53 @@ export function registerTaskCommand(program: Command): void {
 			);
 		});
 
-	task
-		.command("create")
-		.description("Create a task in backlog.")
-		.option("--title <text>", "Task title.")
-		.requiredOption("--prompt <text>", "Task prompt text.")
-		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
-		.option("--base-ref <branch>", "Task base branch/ref.")
-		.option("--start-in-plan-mode [value]", "Set plan mode (true|false). Flag-only implies true.")
-		.option("--auto-review-enabled [value]", "Enable auto-review behavior (true|false). Flag-only implies true.")
-		.option("--auto-review-mode <mode>", "Auto-review mode: commit | pr.", parseAutoReviewMode)
-		.option(
-			"--agent-id <id>",
-			`Agent override: ${VALID_AGENT_IDS.join(" | ")}. Use "default" to clear.`,
-		)
-		.option(
-			"--provider <id>",
-			'Provider override for the task\'s agent. Use "default" to clear. Valid values depend on the agent.',
-		)
-		.option(
-			"--model <id>",
-			'Model override for the task\'s agent. Use "default" to clear. Valid values depend on the agent.',
-		)
-		.option(
-			"--effort <level>",
-			'Reasoning effort override for the task\'s agent. Use "default" or "inherit" to clear.',
-		)
-		.option("--cline-provider <id>", "(Deprecated: use --provider) Provider override for the task's agent.")
-		.option("--cline-model <id>", "(Deprecated: use --model) Model override for the task's agent.")
-		.option("--cline-reasoning-effort <level>", "(Deprecated: use --effort) Reasoning effort override.")
-		.action(
-			async (options: {
-				title?: string;
-				prompt: string;
-				projectPath?: string;
-				baseRef?: string;
-				startInPlanMode?: unknown;
-				autoReviewEnabled?: unknown;
-				autoReviewMode?: "commit" | "pr";
-				agentId?: string;
-				provider?: string;
-				model?: string;
-				effort?: string;
-				clineProvider?: string;
-				clineModel?: string;
-				clineReasoningEffort?: string;
-			}) => {
-				await runTaskCommand(
-					async () =>
-						await createTask({
-							cwd: process.cwd(),
-							title: options.title,
-							prompt: options.prompt,
-							projectPath: options.projectPath,
-							baseRef: options.baseRef,
-							startInPlanMode: parseOptionalBooleanOption(options.startInPlanMode, "--start-in-plan-mode"),
-							autoReviewEnabled: parseOptionalBooleanOption(options.autoReviewEnabled, "--auto-review-enabled"),
-							autoReviewMode: options.autoReviewMode,
-							agentId: parseAgentId(options.agentId) ?? undefined,
-							agentSettings: buildTaskAgentSettingsForCreate({
-								providerId:
-									parseOptionalStringOrDefault(
-										resolveSettingsFlag(
-											options.provider,
-											options.clineProvider,
-											"--provider",
-											"--cline-provider",
-										),
-									) ?? undefined,
-								modelId:
-									parseOptionalStringOrDefault(
-										resolveSettingsFlag(options.model, options.clineModel, "--model", "--cline-model"),
-									) ?? undefined,
-								reasoningEffort: parseTaskReasoningEffort(
-									resolveSettingsFlag(
-										options.effort,
-										options.clineReasoningEffort,
-										"--effort",
-										"--cline-reasoning-effort",
-									),
-								),
-							}),
-						}),
-				);
-			},
-		);
+	const create = task.command("create").description("Create a task in backlog.");
 
-	task
-		.command("update")
-		.description("Update an existing task.")
-		.requiredOption("--task-id <id>", "Task ID.")
-		.option("--title <text>", "Replacement task title.")
-		.option("--prompt <text>", "Replacement task prompt.")
-		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
-		.option("--base-ref <branch>", "Replacement base branch/ref.")
-		.option("--start-in-plan-mode [value]", "Set plan mode (true|false). Flag-only implies true.")
-		.option("--auto-review-enabled [value]", "Enable auto-review behavior (true|false). Flag-only implies true.")
-		.option("--auto-review-mode <mode>", "Auto-review mode: commit | pr.", parseAutoReviewMode)
-		.option(
-			"--agent-id <id>",
-			`Agent override: ${VALID_AGENT_IDS.join(" | ")}. Use "default" to clear.`,
-		)
-		.option(
-			"--provider <id>",
-			'Provider override for the task\'s agent. Use "default" to clear. Valid values depend on the agent.',
-		)
-		.option(
-			"--model <id>",
-			'Model override for the task\'s agent. Use "default" to clear. Valid values depend on the agent.',
-		)
-		.option(
-			"--effort <level>",
-			'Reasoning effort override for the task\'s agent. Use "default" or "inherit" to clear.',
-		)
-		.option("--cline-provider <id>", "(Deprecated: use --provider) Provider override for the task's agent.")
-		.option("--cline-model <id>", "(Deprecated: use --model) Model override for the task's agent.")
-		.option("--cline-reasoning-effort <level>", "(Deprecated: use --effort) Reasoning effort override.")
-		.action(
-			async (options: {
-				taskId: string;
-				title?: string;
-				prompt?: string;
-				projectPath?: string;
-				baseRef?: string;
-				startInPlanMode?: unknown;
-				autoReviewEnabled?: unknown;
-				autoReviewMode?: "commit" | "pr";
-				agentId?: string;
-				provider?: string;
-				model?: string;
-				effort?: string;
-				clineProvider?: string;
-				clineModel?: string;
-				clineReasoningEffort?: string;
-			}) => {
-				await runTaskCommand(
-					async () =>
-						await updateTaskCommand({
-							cwd: process.cwd(),
-							taskId: options.taskId,
-							title: options.title,
-							projectPath: options.projectPath,
-							prompt: options.prompt,
-							baseRef: options.baseRef,
-							startInPlanMode: parseOptionalBooleanOption(options.startInPlanMode, "--start-in-plan-mode"),
-							autoReviewEnabled: parseOptionalBooleanOption(options.autoReviewEnabled, "--auto-review-enabled"),
-							autoReviewMode: options.autoReviewMode,
-							agentId: parseAgentId(options.agentId),
-							providerId: parseOptionalStringOrDefault(
-								resolveSettingsFlag(options.provider, options.clineProvider, "--provider", "--cline-provider"),
-							),
-							modelId: parseOptionalStringOrDefault(
-								resolveSettingsFlag(options.model, options.clineModel, "--model", "--cline-model"),
-							),
+	addTaskMutationOptions(create, CREATE_TASK_MUTATION_FLAGS);
+
+	create.action(
+		async (options: {
+			title?: string;
+			prompt: string;
+			projectPath?: string;
+			baseRef?: string;
+			startInPlanMode?: unknown;
+			autoReviewEnabled?: unknown;
+			autoReviewMode?: "commit" | "pr";
+			agentId?: string;
+			provider?: string;
+			model?: string;
+			effort?: string;
+			clineProvider?: string;
+			clineModel?: string;
+			clineReasoningEffort?: string;
+		}) => {
+			await runTaskCommand(
+				async () =>
+					await createTask({
+						cwd: process.cwd(),
+						title: options.title,
+						prompt: options.prompt,
+						projectPath: options.projectPath,
+						baseRef: options.baseRef,
+						startInPlanMode: parseOptionalBooleanOption(options.startInPlanMode, "--start-in-plan-mode"),
+						autoReviewEnabled: parseOptionalBooleanOption(options.autoReviewEnabled, "--auto-review-enabled"),
+						autoReviewMode: options.autoReviewMode,
+						agentId: parseAgentId(options.agentId) ?? undefined,
+						agentSettings: buildTaskAgentSettingsForCreate({
+							providerId:
+								parseOptionalStringOrDefault(
+									resolveSettingsFlag(
+										options.provider,
+										options.clineProvider,
+										"--provider",
+										"--cline-provider",
+									),
+								) ?? undefined,
+							modelId:
+								parseOptionalStringOrDefault(
+									resolveSettingsFlag(options.model, options.clineModel, "--model", "--cline-model"),
+								) ?? undefined,
 							reasoningEffort: parseTaskReasoningEffort(
 								resolveSettingsFlag(
 									options.effort,
@@ -1330,9 +1286,67 @@ export function registerTaskCommand(program: Command): void {
 								),
 							),
 						}),
-				);
-			},
-		);
+					}),
+			);
+		},
+	);
+
+	const update = task
+		.command("update")
+		.description("Update an existing task.")
+		.requiredOption("--task-id <id>", "Task ID.");
+
+	addTaskMutationOptions(update, UPDATE_TASK_MUTATION_FLAGS);
+
+	update.action(
+		async (options: {
+			taskId: string;
+			title?: string;
+			prompt?: string;
+			projectPath?: string;
+			baseRef?: string;
+			startInPlanMode?: unknown;
+			autoReviewEnabled?: unknown;
+			autoReviewMode?: "commit" | "pr";
+			agentId?: string;
+			provider?: string;
+			model?: string;
+			effort?: string;
+			clineProvider?: string;
+			clineModel?: string;
+			clineReasoningEffort?: string;
+		}) => {
+			await runTaskCommand(
+				async () =>
+					await updateTaskCommand({
+						cwd: process.cwd(),
+						taskId: options.taskId,
+						title: options.title,
+						projectPath: options.projectPath,
+						prompt: options.prompt,
+						baseRef: options.baseRef,
+						startInPlanMode: parseOptionalBooleanOption(options.startInPlanMode, "--start-in-plan-mode"),
+						autoReviewEnabled: parseOptionalBooleanOption(options.autoReviewEnabled, "--auto-review-enabled"),
+						autoReviewMode: options.autoReviewMode,
+						agentId: parseAgentId(options.agentId),
+						providerId: parseOptionalStringOrDefault(
+							resolveSettingsFlag(options.provider, options.clineProvider, "--provider", "--cline-provider"),
+						),
+						modelId: parseOptionalStringOrDefault(
+							resolveSettingsFlag(options.model, options.clineModel, "--model", "--cline-model"),
+						),
+						reasoningEffort: parseTaskReasoningEffort(
+							resolveSettingsFlag(
+								options.effort,
+								options.clineReasoningEffort,
+								"--effort",
+								"--cline-reasoning-effort",
+							),
+						),
+					}),
+			);
+		},
+	);
 
 	task
 		.command("trash")
