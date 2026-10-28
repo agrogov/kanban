@@ -176,7 +176,7 @@ function setScrollMetric(element: HTMLElement, property: "clientHeight" | "scrol
 	});
 }
 
-const savedClineOauthConfig = {
+const savedClineOauthConfig: RuntimeConfigResponse = {
 	selectedAgentId: "cline",
 	selectedShortcutLabel: null,
 	agentAutonomousModeEnabled: true,
@@ -188,7 +188,7 @@ const savedClineOauthConfig = {
 	openPrPromptTemplate: "",
 	commitPromptTemplateDefault: "",
 	openPrPromptTemplateDefault: "",
-	globalConfigPath: null,
+	globalConfigPath: "/tmp/global-config.json",
 	projectConfigPath: null,
 	agents: [
 		{
@@ -196,35 +196,45 @@ const savedClineOauthConfig = {
 			label: "Cline",
 			binary: "cline",
 			command: "cline",
+			defaultArgs: [],
 			installed: true,
+			configured: true,
 		},
 		{
 			id: "claude",
 			label: "Claude Code",
 			binary: "claude",
 			command: "claude",
+			defaultArgs: [],
 			installed: true,
+			configured: true,
 		},
 		{
 			id: "grok",
 			label: "Grok Build",
 			binary: "grok",
 			command: "grok",
+			defaultArgs: [],
 			installed: true,
+			configured: true,
 		},
 		{
 			id: "pi",
 			label: "Pi",
 			binary: "pi",
 			command: "pi",
+			defaultArgs: [],
 			installed: true,
+			configured: true,
 		},
 		{
 			id: "cline-cli",
 			label: "Cline CLI",
 			binary: "cline",
 			command: "cline",
+			defaultArgs: [],
 			installed: true,
+			configured: true,
 		},
 	],
 	clineProviderSettings: {
@@ -239,7 +249,7 @@ const savedClineOauthConfig = {
 		oauthAccountId: "acc-1",
 		oauthExpiresAt: 1_800_000_000_000,
 	},
-} as unknown as RuntimeConfigResponse;
+};
 
 describe("RuntimeSettingsDialog", () => {
 	let container: HTMLDivElement;

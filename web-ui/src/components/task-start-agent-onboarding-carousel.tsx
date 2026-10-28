@@ -356,7 +356,7 @@ export function TaskStartAgentOnboardingCarousel({
 	const onboardingAgents = useMemo(
 		() =>
 			ONBOARDING_AGENT_IDS.map((agentId) => {
-				const configuredAgent = agents.find((agent) => agent.id === agentId) ?? null;
+				const configuredAgent = agents.find((agent) => agent.id === agentId);
 				const catalogEntry = getRuntimeAgentCatalogEntry(agentId);
 				return {
 					id: agentId,

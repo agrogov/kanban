@@ -445,7 +445,7 @@ export function RuntimeSettingsDialog({
 			command: buildDisplayedAgentCommand(agent.id, agent.binary, agentAutonomousModeEnabled),
 		}));
 	}, [agentAutonomousModeEnabled, config?.agents]);
-	const displayedAgents = useMemo(() => supportedAgents, [supportedAgents]);
+	const displayedAgents = supportedAgents;
 	const navItems = useMemo(
 		() => SETTINGS_NAV_ITEMS.filter((item) => !item.clineOnly || selectedAgentId === "cline"),
 		[selectedAgentId],
