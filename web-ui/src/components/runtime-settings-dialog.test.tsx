@@ -87,6 +87,7 @@ vi.mock("@runtime-agent-catalog", () => ({
 	})),
 	getRuntimeLaunchSupportedAgentCatalog: vi.fn(() => [
 		{ id: "cline", label: "Cline", binary: "cline" },
+		{ id: "cline-cli", label: "Cline CLI", binary: "cline" },
 		{ id: "claude", label: "Claude Code", binary: "claude" },
 		{ id: "grok", label: "Grok Build", binary: "grok" },
 	]),
@@ -212,6 +213,10 @@ const savedClineOauthConfig = {
 			label: "Pi",
 			binary: "pi",
 			command: "pi",
+			id: "cline-cli",
+			label: "Cline CLI",
+			binary: "cline",
+			command: "cline",
 			installed: true,
 		},
 	],
@@ -264,6 +269,7 @@ describe("RuntimeSettingsDialog", () => {
 	});
 
 	it("lists Grok Build as a launch-supported agent", async () => {
+	it("lists Cline CLI as a launch-supported agent", async () => {
 		await act(async () => {
 			root.render(
 				<RuntimeSettingsDialog
@@ -279,6 +285,10 @@ describe("RuntimeSettingsDialog", () => {
 			element.textContent?.includes("Grok Build"),
 		);
 		expect(grokRow).toBeTruthy();
+		const clineCliRow = Array.from(document.body.querySelectorAll('[role="button"]')).find((element) =>
+			element.textContent?.includes("Cline CLI"),
+		);
+		expect(clineCliRow).toBeTruthy();
 	});
 
 	it("does not render support actions inside settings", async () => {
