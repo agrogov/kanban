@@ -80,6 +80,9 @@ describe.sequential("runtime-config auto agent selection", () => {
 		expect(pickBestInstalledAgentIdFromDetected(["claude", "droid"])).toBe("claude");
 		expect(pickBestInstalledAgentIdFromDetected(["pi"])).toBe("pi");
 		expect(pickBestInstalledAgentIdFromDetected(["claude", "pi"])).toBe("claude");
+		expect(pickBestInstalledAgentIdFromDetected(["devin", "claude", "codex"])).toBe("claude");
+		expect(pickBestInstalledAgentIdFromDetected(["devin", "kiro"])).toBe("kiro");
+		expect(pickBestInstalledAgentIdFromDetected(["devin", "cline"])).toBe("devin");
 		expect(pickBestInstalledAgentIdFromDetected(["cline"])).toBeNull();
 		expect(pickBestInstalledAgentIdFromDetected([])).toBeNull();
 	});

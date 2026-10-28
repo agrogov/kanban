@@ -88,6 +88,7 @@ describe("buildRuntimeConfigResponse", () => {
 			"kiro",
 			"grok",
 			"pi",
+			"devin",
 		]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
@@ -128,6 +129,7 @@ describe("buildRuntimeConfigResponse", () => {
 			"kiro",
 			"grok",
 			"pi",
+			"devin",
 		]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
 		expect(response.agents.find((agent) => agent.id === "codex")?.defaultArgs).toEqual([]);
@@ -145,6 +147,7 @@ describe("buildRuntimeConfigResponse", () => {
 		expect(response.agents.find((agent) => agent.id === "kiro")?.command).toBe("kiro-cli chat");
 		expect(response.agents.find((agent) => agent.id === "grok")?.command).toBe("grok");
 		expect(response.agents.find((agent) => agent.id === "pi")?.command).toBe("pi");
+		expect(response.agents.find((agent) => agent.id === "devin")?.command).toBe("devin");
 	});
 
 	it("sets debug mode from runtime environment variables", () => {

@@ -34,6 +34,7 @@ const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"grok", "pi",
 	"gemini",
 	"opencode",
+	"devin",
 ];
 
 function isRuntimeAgentId(value: string): value is RuntimeAgentId {
@@ -74,6 +75,8 @@ function renderLinearSetupGuidanceForAgent(agentId: RuntimeAgentId | null): stri
 			return "- If Linear MCP is not available in the current agent (Grok Build), suggest running: `grok mcp add --transport http --scope user linear https://mcp.linear.app/mcp`";
 		case "pi":
 			return "- If Linear MCP is not available in the current agent (Pi), install a Pi MCP extension/package for Linear or configure Linear after `/login`.";
+		case "devin":
+			return "- If Linear MCP is not available in the current agent (Devin), suggest running: `devin mcp add linear --url https://mcp.linear.app/mcp --scope user`";
 		default:
 			return "- If Linear MCP is not available, provide setup instructions for the active agent only, then continue once OAuth is complete.";
 	}

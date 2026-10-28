@@ -165,6 +165,14 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 			docsUrl: "https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/cli-reference.md",
 		},
 	},
+	{
+		id: "devin",
+		label: "Devin",
+		binary: "devin",
+		baseArgs: [],
+		autonomousArgs: ["--permission-mode", "dangerous"],
+		installUrl: "https://docs.devin.ai/cli",
+	},
 ];
 
 // Temporarily keep launch support scoped to the core agent set.
@@ -175,8 +183,10 @@ export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"codex",
 	"droid",
 	"kiro",
-	"grok", "pi",
+	"grok",
+	"pi",
 	"cline-cli",
+	"devin",
 	// "opencode",
 	// "gemini",
 ];
