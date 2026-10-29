@@ -17,7 +17,7 @@ import { EventEmitter } from "node:events";
 import http from "node:http";
 import path from "node:path";
 
-import { buildFilteredEnv } from "./runtime-child-env.js";
+import { buildFilteredEnv, resolveLoginShellPath } from "./runtime-child-env.js";
 
 export interface RuntimeChildConfig {
 	host: string;
@@ -50,6 +50,8 @@ export interface RuntimeChildManagerOptions {
 	 */
 	maxOldSpaceMb?: number;
 	spawnFn?: typeof spawn;
+	/** Resolves the user's login-shell PATH. Default: spawns the login shell once. */
+	resolveShellPath?: () => Promise<string | null>;
 }
 
 const DEFAULT_MAX_OLD_SPACE_MB = 4096;
@@ -148,6 +150,7 @@ export class RuntimeChildManager extends EventEmitter<RuntimeChildManagerEvents>
 		startupTimeoutMs: number;
 		maxOldSpaceMb: number;
 		spawnFn: typeof spawn;
+		resolveShellPath: () => Promise<string | null>;
 	};
 
 	private child: ChildProcess | null = null;
@@ -164,6 +167,7 @@ export class RuntimeChildManager extends EventEmitter<RuntimeChildManagerEvents>
 			startupTimeoutMs: options.startupTimeoutMs ?? 30_000,
 			maxOldSpaceMb: options.maxOldSpaceMb ?? DEFAULT_MAX_OLD_SPACE_MB,
 			spawnFn: options.spawnFn ?? spawn,
+			resolveShellPath: options.resolveShellPath ?? resolveLoginShellPath,
 		};
 	}
 
@@ -212,7 +216,7 @@ export class RuntimeChildManager extends EventEmitter<RuntimeChildManagerEvents>
 		const cliPath = resolveCliPath(this.opts.cliPath);
 		const url = `http://${config.host}:${config.port}`;
 
-		const env = buildFilteredEnv();
+		const env = buildFilteredEnv(await this.opts.resolveShellPath());
 		env.KANBAN_DESKTOP = "1";
 		// Merge our V8 heap limit with any existing NODE_OPTIONS from parent.
 		// Strip both hyphen and underscore variants to avoid duplicates.

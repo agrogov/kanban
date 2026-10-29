@@ -13,7 +13,37 @@
  *      etc. Agent shells need those binaries findable by name.
  */
 
+import { execFile } from "node:child_process";
 import path, { join } from "node:path";
+
+const SHELL_PATH_MARKER = "__KANBAN_SHELL_PATH__";
+const SHELL_PATH_TIMEOUT_MS = 5_000;
+
+let cachedLoginShellPath: Promise<string | null> | null = null;
+
+/**
+ * Resolve the PATH the user's login shell would have. Finder/Dock launches
+ * never see the PATH exported from ~/.zshrc / ~/.zprofile, so agent CLIs
+ * installed in e.g. ~/.local/bin are invisible without this. Runs the shell
+ * once per app session (cached), with a timeout, off the hot path.
+ */
+export function resolveLoginShellPath(): Promise<string | null> {
+	if (process.platform === "win32") return Promise.resolve(null);
+	if (cachedLoginShellPath) return cachedLoginShellPath;
+	const shell = process.env.SHELL || (process.platform === "darwin" ? "/bin/zsh" : "/bin/sh");
+	cachedLoginShellPath = new Promise<string | null>((resolve) => {
+		execFile(
+			shell,
+			["-ilc", `printf '%s' "${SHELL_PATH_MARKER}\${PATH}${SHELL_PATH_MARKER}"`],
+			{ timeout: SHELL_PATH_TIMEOUT_MS, env: process.env },
+			(error, stdout) => {
+				const match = new RegExp(`${SHELL_PATH_MARKER}(.*)${SHELL_PATH_MARKER}`, "s").exec(stdout ?? "");
+				resolve(error && !match ? null : (match?.[1]?.trim() || null));
+			},
+		);
+	});
+	return cachedLoginShellPath;
+}
 
 /**
  * Windows-specific PATH dirs that depend on per-user environment variables
@@ -67,14 +97,20 @@ const EXTRA_PATH_DIRS: readonly string[] =
  * Build an enriched copy of process.env with PATH augmented for GUI-launched
  * processes. All parent environment variables are forwarded by default.
  */
-export function buildFilteredEnv(): NodeJS.ProcessEnv {
+export function buildFilteredEnv(loginShellPath: string | null = null): NodeJS.ProcessEnv {
 	// Forward all parent env vars (matching VS Code's model)
 	const filtered: NodeJS.ProcessEnv = { ...process.env };
 
-	// Enrich PATH with common tool locations that GUI launches omit
-	if (EXTRA_PATH_DIRS.length > 0) {
-		const pathParts = new Set((filtered.PATH ?? "").split(path.delimiter).filter(Boolean));
-		for (const dir of EXTRA_PATH_DIRS) pathParts.add(dir);
+	// The user's login-shell PATH goes first so their tool locations win,
+	// then whatever the GUI launch inherited, then common platform dirs.
+	const pathParts = new Set<string>();
+	for (const source of [loginShellPath ?? "", filtered.PATH ?? ""]) {
+		for (const dir of source.split(path.delimiter)) {
+			if (dir) pathParts.add(dir);
+		}
+	}
+	for (const dir of EXTRA_PATH_DIRS) pathParts.add(dir);
+	if (pathParts.size > 0) {
 		filtered.PATH = [...pathParts].join(path.delimiter);
 	}
 

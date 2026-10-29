@@ -1,7 +1,7 @@
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { buildFilteredEnv } from "../src/runtime-child-env.js";
+import { buildFilteredEnv, resolveLoginShellPath } from "../src/runtime-child-env.js";
 
 const originalPlatform = process.platform;
 const originalPath = process.env.PATH;
@@ -72,6 +72,24 @@ describe("buildFilteredEnv", () => {
 		const pathDirs = (env.PATH ?? "").split(":");
 		expect(pathDirs.length).toBeGreaterThan(0);
 		expect(env.PATH).toBeDefined();
+	});
+
+	it("puts the login-shell PATH first so user-installed agent CLIs are found", () => {
+		setPlatform("darwin");
+		process.env.PATH = "/usr/bin:/bin";
+		const env = buildFilteredEnv("/Users/test/.local/bin:/usr/local/bin");
+		const pathDirs = (env.PATH ?? "").split(path.delimiter);
+		expect(pathDirs[0]).toBe("/Users/test/.local/bin");
+		expect(pathDirs).toContain("/usr/bin");
+		expect(pathDirs).toContain("/opt/homebrew/bin");
+		expect(new Set(pathDirs).size).toBe(pathDirs.length);
+	});
+
+	it("falls back to the inherited PATH when the login-shell PATH is unavailable", () => {
+		setPlatform("darwin");
+		process.env.PATH = "/custom/bin";
+		const env = buildFilteredEnv(null);
+		expect((env.PATH ?? "").split(path.delimiter)).toContain("/custom/bin");
 	});
 
 	it("forwards HOME env variable", () => {
@@ -155,5 +173,14 @@ describe("buildFilteredEnv", () => {
 		delete process.env.XDG_RUNTIME_DIR;
 		const env = buildFilteredEnv();
 		expect(env.XDG_RUNTIME_DIR).toBeUndefined();
+	});
+});
+
+describe("resolveLoginShellPath", () => {
+	it("returns the PATH exported by the login shell", async () => {
+		if (process.platform === "win32") return;
+		const resolved = await resolveLoginShellPath();
+		expect(resolved).not.toBeNull();
+		expect((resolved ?? "").split(path.delimiter)).toContain("/usr/bin");
 	});
 });

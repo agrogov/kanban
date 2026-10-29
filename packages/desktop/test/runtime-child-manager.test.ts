@@ -4,7 +4,14 @@ import http from "node:http";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type * as RuntimeChildEnv from "../src/runtime-child-env.js";
 import { RuntimeChildManager, resolveCliPath } from "../src/runtime-child.js";
+
+// Never spawn a real login shell from unit tests.
+vi.mock("../src/runtime-child-env.js", async (importOriginal) => ({
+	...(await importOriginal<typeof RuntimeChildEnv>()),
+	resolveLoginShellPath: vi.fn(async () => null),
+}));
 
 // ---------------------------------------------------------------------------
 // Mock http.get so health checks resolve immediately in unit tests
