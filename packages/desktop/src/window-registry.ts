@@ -1,5 +1,6 @@
 import { BrowserWindow, screen, shell } from "electron";
 
+import { attachContextMenu } from "./context-menu.js";
 import {
 	type PersistedWindowState,
 	clampBoundsToDisplays,
@@ -94,6 +95,8 @@ export class WindowRegistry {
 			this.lastFocusedId = window.id;
 			options.onWindowFocused?.(window.id);
 		});
+
+		attachContextMenu(window);
 
 		window.webContents.on("will-navigate", (event: Electron.Event, url: string) => {
 			// Resolve trusted origin from the window's current URL (not at creation
