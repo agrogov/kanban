@@ -1,8 +1,9 @@
 import "@xterm/xterm/css/xterm.css";
 
+import * as ContextMenu from "@radix-ui/react-context-menu";
 import { Command, Maximize2, MessageSquare, Minimize2, X } from "lucide-react";
 import type { MutableRefObject, ReactElement } from "react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -15,10 +16,24 @@ import { isMacPlatform } from "@/utils/platform";
 interface AgentTerminalSessionControls {
 	clearTerminal: () => void;
 	containerRef: MutableRefObject<HTMLDivElement | null>;
+	copySelection: () => Promise<void>;
+	hasSelection: () => boolean;
+	pasteFromClipboard: () => Promise<void>;
+	selectAll: () => void;
 	isStopping: boolean;
 	lastError: string | null;
 	stopTerminal: () => Promise<void>;
 }
+
+const TERMINAL_CONTEXT_MENU_ITEMS: {
+	label: string;
+	requiresSelection: boolean;
+	run: (controls: AgentTerminalSessionControls) => void;
+}[] = [
+	{ label: "Copy", requiresSelection: true, run: (controls) => void controls.copySelection() },
+	{ label: "Paste", requiresSelection: false, run: (controls) => void controls.pasteFromClipboard() },
+	{ label: "Select All", requiresSelection: false, run: (controls) => controls.selectAll() },
+];
 
 export interface AgentTerminalPanelProps {
 	taskId: string;
@@ -172,7 +187,8 @@ function AgentTerminalPanelLayout({
 	onToggleExpand,
 	sessionControls,
 }: AgentTerminalPanelProps & { sessionControls: AgentTerminalSessionControls }): ReactElement {
-	const { containerRef, lastError, isStopping, clearTerminal, stopTerminal } = sessionControls;
+	const { containerRef, lastError, isStopping, clearTerminal, stopTerminal, hasSelection } = sessionControls;
+	const [canCopy, setCanCopy] = useState(false);
 	const canStop = summary?.state === "running" || summary?.state === "awaiting_review";
 	const statusLabel = useMemo(() => describeState(summary), [summary]);
 	const statusTagStyle = useMemo(() => getStateTagStyle(summary), [summary]);
@@ -303,11 +319,29 @@ function AgentTerminalPanelLayout({
 				</div>
 			) : null}
 			<div style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden", padding: "3px 1.5px 3px 3px" }}>
-				<div
-					ref={containerRef}
-					className="kb-terminal-container"
-					style={{ height: "100%", width: "100%", background: terminalBackgroundColor }}
-				/>
+				<ContextMenu.Root onOpenChange={(open) => open && setCanCopy(hasSelection())}>
+					<ContextMenu.Trigger asChild>
+						<div
+							ref={containerRef}
+							className="kb-terminal-container"
+							style={{ height: "100%", width: "100%", background: terminalBackgroundColor }}
+						/>
+					</ContextMenu.Trigger>
+					<ContextMenu.Portal>
+						<ContextMenu.Content className="z-50 min-w-[140px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg">
+							{TERMINAL_CONTEXT_MENU_ITEMS.map(({ label, run, requiresSelection }) => (
+								<ContextMenu.Item
+									key={label}
+									disabled={requiresSelection && !canCopy}
+									className="flex items-center rounded-sm px-2 py-1.5 text-[13px] text-text-primary cursor-pointer outline-none data-[disabled]:cursor-default data-[disabled]:text-text-tertiary data-[highlighted]:bg-surface-3"
+									onSelect={() => run(sessionControls)}
+								>
+									{label}
+								</ContextMenu.Item>
+							))}
+						</ContextMenu.Content>
+					</ContextMenu.Portal>
+				</ContextMenu.Root>
 			</div>
 			{lastError ? (
 				<div className="flex gap-2 rounded-none border-t border-status-red/30 bg-status-red/10 p-3 text-[13px] text-status-red">

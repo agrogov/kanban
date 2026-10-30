@@ -21,6 +21,10 @@ interface UsePersistentTerminalSessionInput {
 
 export interface UsePersistentTerminalSessionResult {
 	containerRef: MutableRefObject<HTMLDivElement | null>;
+	copySelection: () => Promise<void>;
+	hasSelection: () => boolean;
+	pasteFromClipboard: () => Promise<void>;
+	selectAll: () => void;
 	lastError: string | null;
 	isStopping: boolean;
 	clearTerminal: () => void;
@@ -183,8 +187,34 @@ export function usePersistentTerminalSession({
 		terminalRef.current?.clear();
 	}, []);
 
+	const hasSelection = useCallback(() => terminalRef.current?.hasSelection() ?? false, []);
+
+	const copySelection = useCallback(async () => {
+		try {
+			await terminalRef.current?.copySelection();
+		} catch {
+			// Ignore clipboard failures.
+		}
+	}, []);
+
+	const pasteFromClipboard = useCallback(async () => {
+		try {
+			await terminalRef.current?.pasteFromClipboard();
+		} catch {
+			// Ignore clipboard failures (permission denied or empty clipboard).
+		}
+	}, []);
+
+	const selectAll = useCallback(() => {
+		terminalRef.current?.selectAll();
+	}, []);
+
 	return {
 		containerRef,
+		copySelection,
+		hasSelection,
+		pasteFromClipboard,
+		selectAll,
 		lastError,
 		isStopping,
 		clearTerminal,

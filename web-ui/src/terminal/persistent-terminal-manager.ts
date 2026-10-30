@@ -606,6 +606,25 @@ class PersistentTerminal {
 		return true;
 	}
 
+	hasSelection(): boolean {
+		return this.terminal.hasSelection();
+	}
+
+	async copySelection(): Promise<void> {
+		if (!this.terminal.hasSelection()) {
+			return;
+		}
+		await navigator.clipboard.writeText(this.terminal.getSelection());
+	}
+
+	async pasteFromClipboard(): Promise<void> {
+		this.paste(await navigator.clipboard.readText());
+	}
+
+	selectAll(): void {
+		this.terminal.selectAll();
+	}
+
 	clear(): void {
 		this.terminalWriteQueue = this.terminalWriteQueue
 			.catch(() => undefined)
