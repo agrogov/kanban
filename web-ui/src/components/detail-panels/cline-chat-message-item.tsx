@@ -1,6 +1,6 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { Brain, ChevronDown, ChevronRight, XCircle } from "lucide-react";
-import React, { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
+import React, { type ReactElement, useMemo, useState } from "react";
 import {
 	formatToolInputForDisplay,
 	getToolDisplay,
@@ -78,7 +78,7 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 					{fullInput ? (
 						<div>
 							<div className="mb-0.5 text-xs text-text-tertiary">Command</div>
-							<pre className="max-h-60 overflow-auto rounded bg-surface-0 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-text-primary">
+							<pre className="max-h-60 overflow-auto rounded bg-surface-0 px-2 py-1.5 text-xs leading-relaxed select-text whitespace-pre-wrap break-all text-text-primary">
 								{fullInput}
 							</pre>
 						</div>
@@ -92,12 +92,12 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 									<div className="mb-0.5 truncate text-xs text-text-tertiary">{result.query}</div>
 								) : null}
 								{result.error ? (
-									<pre className="max-h-60 overflow-auto rounded bg-status-red/5 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-status-red">
+									<pre className="max-h-60 overflow-auto rounded bg-status-red/5 px-2 py-1.5 text-xs leading-relaxed select-text whitespace-pre-wrap break-all text-status-red">
 										{result.error}
 									</pre>
 								) : null}
 								{result.content ? (
-									<pre className="max-h-60 overflow-auto rounded bg-surface-0 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-text-primary">
+									<pre className="max-h-60 overflow-auto rounded bg-surface-0 px-2 py-1.5 text-xs leading-relaxed select-text whitespace-pre-wrap break-all text-text-primary">
 										{result.content}
 									</pre>
 								) : null}
@@ -107,7 +107,7 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 						/* Fallback for non-ToolOperationResult output (skills, ask_question, MCP tools) */
 						<div>
 							<div className="mb-0.5 text-xs text-text-tertiary">Output</div>
-							<pre className="max-h-60 overflow-auto rounded bg-surface-0 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-text-primary">
+							<pre className="max-h-60 overflow-auto rounded bg-surface-0 px-2 py-1.5 text-xs leading-relaxed select-text whitespace-pre-wrap break-all text-text-primary">
 								{parsed.output}
 							</pre>
 						</div>
@@ -117,7 +117,7 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 					{parsed.error ? (
 						<div>
 							<div className="mb-0.5 text-xs text-status-red">Error</div>
-							<pre className="max-h-60 overflow-auto rounded bg-status-red/5 px-2 py-1.5 text-xs leading-relaxed whitespace-pre-wrap break-all text-status-red">
+							<pre className="max-h-60 overflow-auto rounded bg-status-red/5 px-2 py-1.5 text-xs leading-relaxed select-text whitespace-pre-wrap break-all text-status-red">
 								{parsed.error}
 							</pre>
 						</div>
@@ -129,16 +129,7 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 }
 
 function ReasoningMessageBlock({ message }: { message: ClineChatMessage }): ReactElement {
-	const isStreaming = message.meta?.hookEventName === "reasoning_delta";
-	const [expanded, setExpanded] = useState(isStreaming);
-	const wasStreamingRef = useRef(isStreaming);
-
-	useEffect(() => {
-		if (wasStreamingRef.current && !isStreaming) {
-			setExpanded(false);
-		}
-		wasStreamingRef.current = isStreaming;
-	}, [isStreaming]);
+	const [expanded, setExpanded] = useState(false);
 
 	return (
 		<Collapsible.Root open={expanded} onOpenChange={setExpanded} className="w-full">
@@ -167,7 +158,7 @@ function ReasoningMessageBlock({ message }: { message: ClineChatMessage }): Reac
 				</button>
 			</Collapsible.Trigger>
 			<Collapsible.Content className="overflow-hidden data-[state=closed]:animate-[kb-collapsible-up_200ms_ease-out] data-[state=open]:animate-[kb-collapsible-down_200ms_ease-out]">
-				<div className="mt-1 w-full px-1.5 text-sm italic whitespace-pre-wrap break-words text-text-tertiary">
+				<div className="mt-1 w-full px-1.5 text-sm italic select-text whitespace-pre-wrap break-words text-text-tertiary">
 					{message.content}
 				</div>
 			</Collapsible.Content>
@@ -190,7 +181,7 @@ export const ClineChatMessageItem = React.memo(function ClineChatMessageItem({
 		const hasText = message.content.trim().length > 0;
 		const hasImages = Boolean(message.images && message.images.length > 0);
 		return (
-			<div className="ml-auto max-w-[85%] rounded-md bg-accent/10 border border-accent/20 px-3 py-2 text-sm text-text-primary">
+			<div className="ml-auto max-w-[85%] rounded-md bg-accent/10 border border-accent/20 px-3 py-2 text-sm text-text-primary select-text">
 				{hasText ? <div className="whitespace-pre-wrap break-words">{message.content}</div> : null}
 				{hasImages ? (
 					<TaskImageStrip images={message.images ?? []} className={hasText ? "mt-2" : undefined} />
@@ -201,14 +192,14 @@ export const ClineChatMessageItem = React.memo(function ClineChatMessageItem({
 	if (message.role === "assistant") {
 		const normalizedAssistantContent = message.content.replace(/^\n+/, "");
 		return (
-			<div className="min-w-0 w-full px-1.5 text-sm text-text-primary">
+			<div className="min-w-0 w-full px-1.5 text-sm text-text-primary select-text">
 				<ClineMarkdownContent content={normalizedAssistantContent} />
 			</div>
 		);
 	}
 	const label = message.role === "status" ? "Status" : "System";
 	return (
-		<div className="max-w-[85%] rounded-md border border-border bg-surface-3/70 px-3 py-2 text-sm whitespace-pre-wrap break-all text-text-secondary">
+		<div className="max-w-[85%] rounded-md border border-border bg-surface-3/70 px-3 py-2 text-sm select-text whitespace-pre-wrap break-all text-text-secondary">
 			<div className="mb-1 text-xs uppercase tracking-wide text-text-tertiary">{label}</div>
 			{message.content}
 		</div>

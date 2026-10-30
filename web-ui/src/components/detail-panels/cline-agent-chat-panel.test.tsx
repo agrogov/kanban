@@ -180,7 +180,7 @@ describe("ClineAgentChatPanel", () => {
 		expect(container.textContent).toContain('{"ok":true}');
 	});
 
-	it("keeps completed reasoning collapsed after the stream finishes", async () => {
+	it("keeps reasoning collapsed while streaming and after the stream finishes", async () => {
 		const onLoadMessages = vi.fn(async () => []);
 		const streamingReasoningMessage: ClineChatMessage = {
 			id: "reasoning-1",
@@ -213,7 +213,7 @@ describe("ClineAgentChatPanel", () => {
 			await Promise.resolve();
 		});
 
-		expect(container.textContent).toContain("Thinking through the next edit");
+		expect(container.textContent).not.toContain("Thinking through the next edit");
 
 		await act(async () => {
 			renderPanel(
