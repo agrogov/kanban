@@ -3,6 +3,7 @@
 // on state orchestration instead of transport plumbing.
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
+	RuntimeAgencSettingsSave,
 	RuntimeAgentId,
 	RuntimeClineAccountBalanceResponse,
 	RuntimeClineAccountOrganizationsResponse,
@@ -48,6 +49,7 @@ export async function saveRuntimeConfig(
 		readyForReviewNotificationsEnabled?: boolean;
 		commitPromptTemplate?: string;
 		openPrPromptTemplate?: string;
+		agencSettings?: RuntimeAgencSettingsSave;
 	},
 ): Promise<RuntimeConfigResponse> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);

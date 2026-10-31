@@ -2,7 +2,7 @@ import { access, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-
+import { loadGlobalRuntimeConfig } from "../config/runtime-config";
 import type {
 	RuntimeAgentId,
 	RuntimeHookEvent,
@@ -16,6 +16,8 @@ import { quoteShellArg } from "../core/shell";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import { getRuntimeHomePath } from "../state/workspace-state";
+import { ensureAgencProjectTrusted } from "./agenc-project-trust";
+import { isTaskWorktreePath } from "./claude-workspace-trust";
 import { configureCodexHooks, hasCodexConfigOverride } from "./codex-hook-config";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
 import {
@@ -2223,6 +2225,81 @@ const clineCliAdapter: AgentSessionAdapter = {
 	},
 };
 
+// AgenC loads an explicit TOML layer via --config and runs Claude-style command hooks from it.
+// Reference: https://github.com/tetsuo-ai/agenc-core/blob/main/docs/reference/hooks.md
+function buildAgencHooksToml(): string {
+	const command = (event: RuntimeHookEvent, name: string) =>
+		`{ type = "command", command = ${JSON.stringify(buildHooksCommand(["notify", "--event", event, "--source", "agenc", "--hook-event-name", name]))} }`;
+	const section = (name: string, event: RuntimeHookEvent, matcher?: string) =>
+		`[[hooks.${name}]]\n${matcher ? `matcher = ${JSON.stringify(matcher)}\n` : ""}hooks = [${command(event, name)}]\n`;
+	return [
+		"config_version = 2\n",
+		section("UserPromptSubmit", "to_in_progress"),
+		section("PreToolUse", "activity", "*"),
+		section("PostToolUse", "activity", "*"),
+		section("Notification", "to_review"),
+		section("Stop", "to_review"),
+	].join("\n");
+}
+
+// AgenC's OpenAI-compatible provider reads OPENAI_COMPATIBLE_BASE_URL / OPENAI_COMPATIBLE_API_KEY.
+const AGENC_CUSTOM_PROVIDER_ID = "openai-compatible";
+
+const agencAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+
+		if (input.resumeFromTrash && !hasCliOption(args, "--continue") && !hasCliOption(args, "-c")) {
+			args.push("--continue");
+		}
+		if (input.startInPlanMode && !hasCliOption(args, "--permission-mode")) {
+			args.push("--permission-mode", "plan");
+		}
+
+		const hooks = resolveHookContext(input);
+		if (hooks && !hasCliOption(args, "--config")) {
+			const configPath = join(getHookAgentDirectory("agenc"), "config.toml");
+			await ensureTextFile(configPath, buildAgencHooksToml());
+			args.push("--config", configPath);
+			Object.assign(env, createHookRuntimeEnv({ taskId: hooks.taskId, workspaceId: hooks.workspaceId }));
+			// Lets command hooks run in untrusted workspaces. This does not skip AgenC's separate
+			// project-trust prompt, which still appears once per new task worktree.
+			env.AGENC_ALLOW_UNTRUSTED_HOOKS = "1";
+			// Only Kanban-created task worktrees are pre-trusted; other cwds keep AgenC's own prompt.
+			if (isTaskWorktreePath(input.cwd)) {
+				try {
+					await ensureAgencProjectTrusted(input.cwd, { ...process.env, ...input.env });
+				} catch {
+					// Fall back to AgenC's interactive trust card rather than failing the launch.
+				}
+			}
+		}
+
+		// Per-task agent settings win over the connection settings saved in Kanban's global config.
+		const { agencSettings } = await loadGlobalRuntimeConfig();
+		const usesCustomEndpoint = agencSettings.baseUrl.length > 0 || agencSettings.apiKey.length > 0;
+		if (agencSettings.baseUrl) {
+			env.OPENAI_COMPATIBLE_BASE_URL = agencSettings.baseUrl;
+		}
+		if (agencSettings.apiKey) {
+			env.OPENAI_COMPATIBLE_API_KEY = agencSettings.apiKey;
+		}
+		applyCliOptionOverride(args, input.agentSettings?.modelId ?? (agencSettings.model || undefined), ["--model"]);
+		applyCliOptionOverride(
+			args,
+			input.agentSettings?.providerId ?? (usesCustomEndpoint ? AGENC_CUSTOM_PROVIDER_ID : undefined),
+			["--provider"],
+		);
+
+		const withPromptLaunch = withPrompt(args, input.prompt, "append");
+		return {
+			...withPromptLaunch,
+			env: { ...withPromptLaunch.env, ...env },
+		};
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
@@ -2232,6 +2309,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	kiro: kiroAdapter,
 	grok: grokAdapter,
 	pi: piAdapter,
+	agenc: agencAdapter,
 	cline: clineAdapter,
 	"cline-cli": clineCliAdapter,
 	devin: devinAdapter,

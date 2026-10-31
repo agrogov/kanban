@@ -65,6 +65,8 @@ function renderLinearSetupGuidanceForAgent(agentId: RuntimeAgentId | null): stri
 			return "- If Linear MCP is not available in the current agent (Grok Build), suggest running: `grok mcp add --transport http --scope user linear https://mcp.linear.app/mcp`";
 		case "pi":
 			return "- If Linear MCP is not available in the current agent (Pi), install a Pi MCP extension/package for Linear or configure Linear after `/login`.";
+		case "agenc":
+			return "- If Linear MCP is not available in the current agent (AgenC), configure Linear through `agenc mcp` using URL `https://mcp.linear.app/mcp`.";
 		case "devin":
 			return "- If Linear MCP is not available in the current agent (Devin), suggest running: `devin mcp add linear --url https://mcp.linear.app/mcp --scope user`";
 		default:

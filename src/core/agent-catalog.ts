@@ -168,6 +168,22 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		},
 	},
 	{
+		id: "agenc",
+		label: "AgenC",
+		description: "Open source terminal coding agent from tetsuo-ai that works with any model provider.",
+		binary: "agenc",
+		baseArgs: [],
+		autonomousArgs: ["--bypass-approvals"],
+		installUrl: "https://get.agenc.ag",
+		installHint: "Install with curl -fsSL https://get.agenc.ag/install.sh | sh, then run agenc onboard.",
+		capabilities: {
+			modelOverride: "flag",
+			effortOverride: "none",
+			providerOverride: "flag",
+			docsUrl: "https://github.com/tetsuo-ai/agenc-core/blob/main/docs/reference/cli.md",
+		},
+	},
+	{
 		id: "gemini",
 		label: "Gemini CLI",
 		description: "Google's coding agent CLI with access to the latest Gemini models.",

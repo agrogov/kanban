@@ -1,6 +1,7 @@
 // Settings dialog composition for Kanban.
 // Generic app settings live here, while Cline-specific provider state and
 // side effects should stay in use-runtime-settings-cline-controller.ts.
+
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as RadixPopover from "@radix-ui/react-popover";
 import * as RadixSelect from "@radix-ui/react-select";
@@ -28,6 +29,13 @@ import {
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type AgencSettingsDraft,
+	AgencSettingsSection,
+	createAgencSettingsDraft,
+	EMPTY_AGENC_SETTINGS_DRAFT,
+	hasAgencSettingsChanges,
+} from "@/components/agenc-settings-section";
 import { AccountOrganizationSection } from "@/components/shared/account-organization-section";
 import { ClineSetupSection } from "@/components/shared/cline-setup-section";
 import {
@@ -383,6 +391,7 @@ export function RuntimeSettingsDialog({
 	const [shortcuts, setShortcuts] = useState<RuntimeProjectShortcut[]>([]);
 	const [commitPromptTemplate, setCommitPromptTemplate] = useState("");
 	const [openPrPromptTemplate, setOpenPrPromptTemplate] = useState("");
+	const [agencDraft, setAgencDraft] = useState<AgencSettingsDraft>(EMPTY_AGENC_SETTINGS_DRAFT);
 	const [selectedPromptVariant, setSelectedPromptVariant] = useState<TaskGitAction>("commit");
 	const [copiedVariableToken, setCopiedVariableToken] = useState<string | null>(null);
 	const [saveError, setSaveError] = useState<string | null>(null);
@@ -484,6 +493,9 @@ export function RuntimeSettingsDialog({
 		if (readyForReviewNotificationsEnabled !== initialReadyForReviewNotificationsEnabled) {
 			return true;
 		}
+		if (selectedAgentId === "agenc" && hasAgencSettingsChanges(agencDraft, config.agencSettings)) {
+			return true;
+		}
 		if (clineSettings.hasUnsavedChanges) {
 			return true;
 		}
@@ -507,6 +519,7 @@ export function RuntimeSettingsDialog({
 			normalizeTemplateForComparison(initialOpenPrPromptTemplate)
 		);
 	}, [
+		agencDraft,
 		agentAutonomousModeEnabled,
 		clineMcpSettings.hasUnsavedChanges,
 		clineSettings.hasUnsavedChanges,
@@ -536,8 +549,10 @@ export function RuntimeSettingsDialog({
 		setShortcuts(config?.shortcuts ?? []);
 		setCommitPromptTemplate(config?.commitPromptTemplate ?? "");
 		setOpenPrPromptTemplate(config?.openPrPromptTemplate ?? "");
+		setAgencDraft(createAgencSettingsDraft(config?.agencSettings));
 		setSaveError(null);
 	}, [
+		config?.agencSettings,
 		config?.agentAutonomousModeEnabled,
 		config?.commitPromptTemplate,
 		config?.openPrPromptTemplate,
@@ -725,6 +740,19 @@ export function RuntimeSettingsDialog({
 			shortcuts,
 			commitPromptTemplate,
 			openPrPromptTemplate,
+			...(selectedAgentId === "agenc" && hasAgencSettingsChanges(agencDraft, config.agencSettings)
+				? {
+						agencSettings: {
+							baseUrl: agencDraft.baseUrl,
+							model: agencDraft.model,
+							...(agencDraft.clearApiKey
+								? { apiKey: "" }
+								: agencDraft.apiKey.trim()
+									? { apiKey: agencDraft.apiKey }
+									: {}),
+						},
+					}
+				: {}),
 		});
 		if (!saved) {
 			setSaveError("Could not save runtime settings. Check runtime logs and try again.");
@@ -834,6 +862,16 @@ export function RuntimeSettingsDialog({
 							Allows agents to use tools without stopping for permission. Use at your own risk.
 						</p>
 					</div>
+
+					{/* ---- AgenC ---- */}
+					{selectedAgentId === "agenc" ? (
+						<AgencSettingsSection
+							draft={agencDraft}
+							apiKeyConfigured={config?.agencSettings?.apiKeyConfigured ?? false}
+							disabled={controlsDisabled}
+							onChange={setAgencDraft}
+						/>
+					) : null}
 
 					{/* ---- Cline ---- */}
 					{selectedAgentId === "cline" ? (

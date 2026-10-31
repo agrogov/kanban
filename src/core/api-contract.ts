@@ -80,6 +80,7 @@ export const runtimeAgentIdSchema = z.enum([
 	"kiro",
 	"grok",
 	"pi",
+	"agenc",
 	"cline",
 	"cline-cli",
 	"devin",
@@ -971,6 +972,24 @@ export const runtimeAgentDefinitionSchema = z.object({
 });
 export type RuntimeAgentDefinition = z.infer<typeof runtimeAgentDefinitionSchema>;
 
+export const runtimeAgencSettingsSchema = z.object({
+	baseUrl: z.string(),
+	model: z.string(),
+});
+export type RuntimeAgencSettings = z.infer<typeof runtimeAgencSettingsSchema>;
+
+export const runtimeAgencSettingsResponseSchema = runtimeAgencSettingsSchema.extend({
+	/** The stored key is never sent back to the browser. */
+	apiKeyConfigured: z.boolean(),
+});
+export type RuntimeAgencSettingsResponse = z.infer<typeof runtimeAgencSettingsResponseSchema>;
+
+export const runtimeAgencSettingsSaveSchema = runtimeAgencSettingsSchema.partial().extend({
+	/** Omit to keep the stored key; an empty string clears it. */
+	apiKey: z.string().optional(),
+});
+export type RuntimeAgencSettingsSave = z.infer<typeof runtimeAgencSettingsSaveSchema>;
+
 export const runtimeConfigResponseSchema = z.object({
 	selectedAgentId: runtimeAgentIdSchema,
 	selectedShortcutLabel: z.string().nullable(),
@@ -988,6 +1007,7 @@ export const runtimeConfigResponseSchema = z.object({
 	openPrPromptTemplate: z.string(),
 	commitPromptTemplateDefault: z.string(),
 	openPrPromptTemplateDefault: z.string(),
+	agencSettings: runtimeAgencSettingsResponseSchema.optional(),
 });
 export type RuntimeConfigResponse = z.infer<typeof runtimeConfigResponseSchema>;
 
@@ -999,6 +1019,7 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	readyForReviewNotificationsEnabled: z.boolean().optional(),
 	commitPromptTemplate: z.string().optional(),
 	openPrPromptTemplate: z.string().optional(),
+	agencSettings: runtimeAgencSettingsSaveSchema.optional(),
 });
 export type RuntimeConfigSaveRequest = z.infer<typeof runtimeConfigSaveRequestSchema>;
 

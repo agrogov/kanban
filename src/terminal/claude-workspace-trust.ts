@@ -61,7 +61,7 @@ export function hasClaudeWorkspaceTrustPrompt(text: string): boolean {
 	return /yes,?\s*i\s*trust\s*this\s*folder/u.test(normalized) || /trust\s+this\s+folder/u.test(normalized);
 }
 
-function isTaskWorktreePath(path: string): boolean {
+export function isTaskWorktreePath(path: string): boolean {
 	const worktreesRoot = `${getTaskWorktreesHomePath().replace(/\\/gu, "/").replace(/\/+$/u, "")}/`;
 	const normalizedPath = `${path.replace(/\\/gu, "/").replace(/\/+$/u, "")}/`;
 	if (process.platform === "win32") {

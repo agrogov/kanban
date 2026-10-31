@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { buildTaskAgentSettingsForUpdate } from "../../../src/commands/task";
+import { loadGlobalRuntimeConfig, updateGlobalRuntimeConfig } from "../../../src/config/runtime-config";
 import { prepareAgentLaunch } from "../../../src/terminal/agent-session-adapters";
 
 const originalHome = process.env.HOME;
@@ -82,6 +83,54 @@ afterEach(() => {
 });
 
 describe("prepareAgentLaunch hook strategies", () => {
+	it("configures AgenC hooks through a config_version 2 --config layer", async () => {
+		setupTempHome();
+		setKanbanProcessContext();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "agenc",
+			binary: "agenc",
+			args: [],
+			cwd: "/tmp",
+			prompt: "do it",
+			workspaceId: "workspace-1",
+		});
+
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-1");
+		expect(launch.env.AGENC_ALLOW_UNTRUSTED_HOOKS).toBe("1");
+		const configIndex = launch.args.indexOf("--config");
+		expect(configIndex).toBeGreaterThan(-1);
+		const toml = readFileSync(launch.args[configIndex + 1] ?? "", "utf8");
+		expect(toml.startsWith("config_version = 2\n")).toBe(true);
+		for (const event of ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop"]) {
+			expect(toml).toContain(`[[hooks.${event}]]`);
+		}
+		expect(toml).toContain("--source");
+		expect(launch.args.at(-1)).toBe("do it");
+	});
+
+	it("applies saved AgenC connection settings as provider env and flags", async () => {
+		setupTempHome();
+		await updateGlobalRuntimeConfig(await loadGlobalRuntimeConfig(), {
+			agencSettings: { baseUrl: "http://127.0.0.1:8799/v1", model: "fake", apiKey: "secret" },
+		});
+		const launch = await prepareAgentLaunch({
+			taskId: "task-1",
+			agentId: "agenc",
+			binary: "agenc",
+			args: [],
+			cwd: "/tmp",
+			prompt: "do it",
+			workspaceId: "workspace-1",
+		});
+
+		expect(launch.env.OPENAI_COMPATIBLE_BASE_URL).toBe("http://127.0.0.1:8799/v1");
+		expect(launch.env.OPENAI_COMPATIBLE_API_KEY).toBe("secret");
+		expect(launch.args[launch.args.indexOf("--model") + 1]).toBe("fake");
+		expect(launch.args[launch.args.indexOf("--provider") + 1]).toBe("openai-compatible");
+		expect(launch.args.at(-1)).toBe("do it");
+	});
+
 	it("configures Codex hooks without legacy notify", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({

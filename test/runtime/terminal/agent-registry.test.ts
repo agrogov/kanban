@@ -30,6 +30,7 @@ function createRuntimeConfigState(overrides: Partial<RuntimeConfigState> = {}): 
 		openPrPromptTemplate: "pr",
 		commitPromptTemplateDefault: "commit",
 		openPrPromptTemplateDefault: "pr",
+		agencSettings: { baseUrl: "", model: "", apiKey: "" },
 		...overrides,
 	};
 }
@@ -90,6 +91,7 @@ describe("buildRuntimeConfigResponse", () => {
 			"kiro",
 			"grok",
 			"pi",
+			"agenc",
 			"devin",
 		]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);
@@ -131,6 +133,7 @@ describe("buildRuntimeConfigResponse", () => {
 			"kiro",
 			"grok",
 			"pi",
+			"agenc",
 			"devin",
 		]);
 		expect(response.agents.find((agent) => agent.id === "claude")?.defaultArgs).toEqual([]);

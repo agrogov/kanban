@@ -159,5 +159,10 @@ export function buildRuntimeConfigResponse(
 		openPrPromptTemplate: runtimeConfig.openPrPromptTemplate,
 		commitPromptTemplateDefault: runtimeConfig.commitPromptTemplateDefault,
 		openPrPromptTemplateDefault: runtimeConfig.openPrPromptTemplateDefault,
+		agencSettings: {
+			baseUrl: runtimeConfig.agencSettings.baseUrl,
+			model: runtimeConfig.agencSettings.model,
+			apiKeyConfigured: runtimeConfig.agencSettings.apiKey.length > 0,
+		},
 	};
 }

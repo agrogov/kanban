@@ -189,6 +189,7 @@ function createRuntimeConfigState(): RuntimeConfigState {
 		openPrPromptTemplate: "pr",
 		commitPromptTemplateDefault: "commit",
 		openPrPromptTemplateDefault: "pr",
+		agencSettings: { baseUrl: "", model: "", apiKey: "" },
 		globalConfigPath: "/tmp/global-config.json",
 		projectConfigPath: "/tmp/project-config.json",
 	};
