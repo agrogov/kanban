@@ -11,6 +11,7 @@ import type {
 	RuntimeTaskImage,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract";
+import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { buildKanbanCommandParts } from "../core/kanban-command";
 import { quoteShellArg } from "../core/shell";
 import { lockedFileSystem } from "../fs/locked-file-system";
@@ -2227,7 +2228,7 @@ const clineCliAdapter: AgentSessionAdapter = {
 
 // AgenC loads an explicit TOML layer via --config and runs Claude-style command hooks from it.
 // Reference: https://github.com/tetsuo-ai/agenc-core/blob/main/docs/reference/hooks.md
-function buildAgencHooksToml(): string {
+function buildAgencHooksToml(options: { allowNetwork?: boolean } = {}): string {
 	const command = (event: RuntimeHookEvent, name: string) =>
 		`{ type = "command", command = ${JSON.stringify(buildHooksCommand(["notify", "--event", event, "--source", "agenc", "--hook-event-name", name]))} }`;
 	const section = (name: string, event: RuntimeHookEvent, matcher?: string) =>
@@ -2239,6 +2240,15 @@ function buildAgencHooksToml(): string {
 		section("PostToolUse", "activity", "*"),
 		section("Notification", "to_review"),
 		section("Stop", "to_review"),
+		// The sidebar agent drives the board through the Kanban CLI, which reaches the runtime over
+		// localhost and edits board state (plus lock dirs) under the runtime home. AgenC's OS sandbox
+		// blocks both by default. Task cards keep the default.
+		...(options.allowNetwork
+			? [
+					"[sandbox]\nnetwork_access = true\n",
+					`[sandbox.filesystem]\nallowWrite = [${JSON.stringify(getRuntimeHomePath())}]\n`,
+				]
+			: []),
 	].join("\n");
 }
 
@@ -2262,8 +2272,9 @@ const agencAdapter: AgentSessionAdapter = {
 
 		const hooks = resolveHookContext(input);
 		if (hooks && !hasCliOption(args, "--config")) {
-			const configPath = join(getHookAgentDirectory("agenc"), "config.toml");
-			await ensureTextFile(configPath, buildAgencHooksToml());
+			const allowNetwork = isHomeAgentSessionId(input.taskId);
+			const configPath = join(getHookAgentDirectory("agenc"), allowNetwork ? "config-home.toml" : "config.toml");
+			await ensureTextFile(configPath, buildAgencHooksToml({ allowNetwork }));
 			args.push("--config", configPath);
 			Object.assign(env, createHookRuntimeEnv({ taskId: hooks.taskId, workspaceId: hooks.workspaceId }));
 			// Lets command hooks run in untrusted workspaces. This does not skip AgenC's separate
@@ -2295,7 +2306,13 @@ const agencAdapter: AgentSessionAdapter = {
 			["--provider"],
 		);
 
-		const withPromptLaunch = withPrompt(args, input.prompt, "append");
+		// AgenC has no system-prompt flag or config key, so the sidebar agent's Kanban instructions
+		// travel as the opening message.
+		const homeSessionPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
+		const openingPrompt = homeSessionPrompt
+			? `${homeSessionPrompt}\n\nThe text above is standing context for this session, not a request. Reply with one short line and wait for my request.\n\n${input.prompt}`
+			: input.prompt;
+		const withPromptLaunch = withPrompt(args, openingPrompt, "append");
 		return {
 			...withPromptLaunch,
 			env: { ...withPromptLaunch.env, ...env },

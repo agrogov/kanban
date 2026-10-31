@@ -109,6 +109,28 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.args.at(-1)).toBe("do it");
 	});
 
+	it("enables sandbox network access for the AgenC sidebar agent only", async () => {
+		setupTempHome();
+		const base = {
+			agentId: "agenc" as const,
+			binary: "agenc",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			workspaceId: "workspace-1",
+		};
+		const home = await prepareAgentLaunch({ ...base, taskId: "__home_agent__:workspace-1:agenc" });
+		const task = await prepareAgentLaunch({ ...base, taskId: "task-1" });
+
+		const homeToml = readFileSync(home.args[home.args.indexOf("--config") + 1] as string, "utf8");
+		const taskToml = readFileSync(task.args[task.args.indexOf("--config") + 1] as string, "utf8");
+		expect(homeToml).toContain("network_access = true");
+		expect(homeToml).toContain("[sandbox.filesystem]");
+		expect(homeToml).toContain("allowWrite");
+		expect(taskToml).not.toContain("network_access");
+		expect(taskToml).not.toContain("allowWrite");
+	});
+
 	it("applies saved AgenC connection settings as provider env and flags", async () => {
 		setupTempHome();
 		await updateGlobalRuntimeConfig(await loadGlobalRuntimeConfig(), {
@@ -129,6 +151,22 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(launch.args[launch.args.indexOf("--model") + 1]).toBe("fake");
 		expect(launch.args[launch.args.indexOf("--provider") + 1]).toBe("openai-compatible");
 		expect(launch.args.at(-1)).toBe("do it");
+	});
+
+	it("sends the Kanban sidebar instructions to AgenC as the opening prompt", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:agenc",
+			agentId: "agenc",
+			binary: "agenc",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			workspaceId: "workspace-1",
+		});
+
+		expect(launch.args.at(-1)).toContain("task create");
+		expect(launch.args.at(-1)).toContain("standing context");
 	});
 
 	it("configures Codex hooks without legacy notify", async () => {
