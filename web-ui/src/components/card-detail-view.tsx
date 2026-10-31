@@ -17,7 +17,7 @@ import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { useCardDetailLayout } from "@/resize/use-card-detail-layout";
 import { useResizeDrag } from "@/resize/use-resize-drag";
-import { isNativeChatAgentSelected } from "@/runtime/native-agent";
+import { isNativeChatAgentSelected, isNativeClineAgentSelected } from "@/runtime/native-agent";
 import type {
 	RuntimeAgentId,
 	RuntimeConfigResponse,
@@ -638,6 +638,7 @@ export function CardDetailView({
 			runtimeConfig={runtimeConfig}
 			taskAgentSettings={selection.card.agentSettings}
 			taskHasExplicitAgentSettings={hasExplicitTaskAgentSettings}
+			showModelPicker={isNativeClineAgentSelected(effectiveTaskAgentId)}
 			onAgentSettingsSaved={onAgentSettingsSaved}
 			onTaskAgentSettingsChanged={onTaskAgentSettingsChanged}
 			onSendMessage={onSendClineChatMessage}

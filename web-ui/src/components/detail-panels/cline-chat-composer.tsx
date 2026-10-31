@@ -54,6 +54,7 @@ export function ClineChatComposer({
 	canCancel,
 	onSend,
 	onCancel,
+	showModelPicker = true,
 	modelOptions,
 	recommendedModelIds = [],
 	pinSelectedModelToTop = true,
@@ -84,6 +85,8 @@ export function ClineChatComposer({
 	canCancel: boolean;
 	onSend: () => void | Promise<void>;
 	onCancel: () => void;
+	/** False for agents whose model is not a Cline provider model (for example claude-chat). */
+	showModelPicker?: boolean;
 	modelOptions: readonly SearchSelectOption[];
 	recommendedModelIds?: readonly string[];
 	pinSelectedModelToTop?: boolean;
@@ -492,22 +495,24 @@ export function ClineChatComposer({
 				<TaskImageStrip images={images} onRemoveImage={handleRemoveImage} className="mt-2" />
 			) : null}
 			<div className="mt-2 flex min-w-0 items-center gap-2">
-				<div className="min-w-0 shrink overflow-hidden">
-					<ClineChatModelSelector
-						modelOptions={modelOptions}
-						recommendedModelIds={recommendedModelIds}
-						pinSelectedModelToTop={pinSelectedModelToTop}
-						selectedModelId={selectedModelId}
-						selectedModelButtonText={selectedModelButtonText}
-						onSelectModel={onSelectModel}
-						reasoningEnabledModelIds={reasoningEnabledModelIds}
-						selectedReasoningEffort={selectedReasoningEffort}
-						onSelectReasoningEffort={onSelectReasoningEffort}
-						disabled={modelPickerDisabled}
-						isModelLoading={isModelLoading}
-						isModelSaving={isModelSaving}
-					/>
-				</div>
+				{showModelPicker ? (
+					<div className="min-w-0 shrink overflow-hidden">
+						<ClineChatModelSelector
+							modelOptions={modelOptions}
+							recommendedModelIds={recommendedModelIds}
+							pinSelectedModelToTop={pinSelectedModelToTop}
+							selectedModelId={selectedModelId}
+							selectedModelButtonText={selectedModelButtonText}
+							onSelectModel={onSelectModel}
+							reasoningEnabledModelIds={reasoningEnabledModelIds}
+							selectedReasoningEffort={selectedReasoningEffort}
+							onSelectReasoningEffort={onSelectReasoningEffort}
+							disabled={modelPickerDisabled}
+							isModelLoading={isModelLoading}
+							isModelSaving={isModelSaving}
+						/>
+					</div>
+				) : null}
 				<div className="ml-auto flex shrink-0 items-center gap-2">
 					{showModeToggle ? (
 						<Tooltip

@@ -89,6 +89,7 @@ export interface ClineAgentChatPanelProps {
 	runtimeConfig?: RuntimeConfigResponse | null;
 	taskAgentSettings?: RuntimeTaskAgentSettings;
 	taskHasExplicitAgentSettings?: boolean;
+	showModelPicker?: boolean;
 	onAgentSettingsSaved?: () => void;
 	onTaskAgentSettingsChanged?: (settings: { providerId: string; modelId: string; reasoningEffort: string }) => void;
 	onSendMessage?: (
@@ -124,6 +125,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 			runtimeConfig = null,
 			taskAgentSettings,
 			taskHasExplicitAgentSettings = false,
+			showModelPicker = true,
 			onAgentSettingsSaved,
 			onTaskAgentSettingsChanged,
 			onSendMessage,
@@ -424,6 +426,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 						canCancel={canCancel}
 						onSend={handleComposerSend}
 						onCancel={handleCancelTurn}
+						showModelPicker={showModelPicker}
 						modelOptions={modelOptions}
 						recommendedModelIds={modelPickerOptions.recommendedModelIds}
 						pinSelectedModelToTop={modelPickerOptions.shouldPinSelectedModelToTop}
