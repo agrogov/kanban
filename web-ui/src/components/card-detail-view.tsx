@@ -17,7 +17,7 @@ import { ResizableBottomPane } from "@/resize/resizable-bottom-pane";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { useCardDetailLayout } from "@/resize/use-card-detail-layout";
 import { useResizeDrag } from "@/resize/use-resize-drag";
-import { isNativeClineAgentSelected } from "@/runtime/native-agent";
+import { isNativeChatAgentSelected } from "@/runtime/native-agent";
 import type {
 	RuntimeAgentId,
 	RuntimeConfigResponse,
@@ -508,7 +508,7 @@ export function CardDetailView({
 	const showMoveToTrashActions = selection.column.id === "review" || selection.column.id === "in_progress";
 	const isTaskTerminalEnabled = selection.column.id === "in_progress" || selection.column.id === "review";
 	const effectiveTaskAgentId = sessionSummary?.agentId ?? selection.card.agentId ?? selectedAgentId;
-	const showClineAgentChatPanel = isNativeClineAgentSelected(effectiveTaskAgentId);
+	const showClineAgentChatPanel = isNativeChatAgentSelected(effectiveTaskAgentId);
 	const availablePaths = useMemo(() => {
 		if (!runtimeFiles || runtimeFiles.length === 0) {
 			return [];

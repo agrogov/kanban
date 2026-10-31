@@ -11,6 +11,11 @@ export function isNativeClineAgentSelected(agentId: RuntimeAgentId | null | unde
 	return agentId === "cline";
 }
 
+/** Agents shown in the native chat panel: the embedded Cline SDK and Claude's chat view. */
+export function isNativeChatAgentSelected(agentId: RuntimeAgentId | null | undefined): boolean {
+	return agentId === "cline" || agentId === "claude-chat";
+}
+
 export function getRuntimeClineProviderSettings(
 	config: Pick<RuntimeConfigResponse, "clineProviderSettings"> | null | undefined,
 ): RuntimeClineProviderSettings {

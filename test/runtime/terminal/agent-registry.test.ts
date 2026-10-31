@@ -84,6 +84,7 @@ describe("buildRuntimeConfigResponse", () => {
 		expect(response.agentAutonomousModeEnabled).toBe(true);
 		expect(response.agents.map((agent) => agent.id)).toEqual([
 			"claude",
+			"claude-chat",
 			"codex",
 			"cline",
 			"cline-cli",
@@ -126,6 +127,7 @@ describe("buildRuntimeConfigResponse", () => {
 		expect(response.agentAutonomousModeEnabled).toBe(false);
 		expect(response.agents.map((agent) => agent.id)).toEqual([
 			"claude",
+			"claude-chat",
 			"codex",
 			"cline",
 			"cline-cli",

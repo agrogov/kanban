@@ -230,7 +230,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeTaskChatMessagesRequest,
 		) => Promise<RuntimeTaskChatMessagesResponse>;
-		getClineSlashCommands: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeSlashCommandsResponse>;
+		getClineSlashCommands: (
+			scope: RuntimeTrpcWorkspaceScope | null,
+			taskId?: string,
+		) => Promise<RuntimeSlashCommandsResponse>;
 		sendTaskChatMessage: (
 			scope: RuntimeTrpcWorkspaceScope,
 			input: RuntimeTaskChatSendRequest,
@@ -479,9 +482,12 @@ export const runtimeAppRouter = t.router({
 			.query(async ({ ctx, input }) => {
 				return await ctx.runtimeApi.getTaskChatMessages(ctx.workspaceScope, input);
 			}),
-		getClineSlashCommands: t.procedure.output(runtimeSlashCommandsResponseSchema).query(async ({ ctx }) => {
-			return await ctx.runtimeApi.getClineSlashCommands(ctx.workspaceScope);
-		}),
+		getClineSlashCommands: t.procedure
+			.input(z.object({ taskId: z.string().optional() }).optional())
+			.output(runtimeSlashCommandsResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.getClineSlashCommands(ctx.workspaceScope, input?.taskId);
+			}),
 		reloadTaskChatSession: workspaceProcedure
 			.input(runtimeTaskChatReloadRequestSchema)
 			.output(runtimeTaskChatReloadResponseSchema)

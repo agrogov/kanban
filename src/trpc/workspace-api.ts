@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
+import { isNativeChatAgentId } from "../core/agent-catalog";
 import type {
 	RuntimeGitCheckoutResponse,
 	RuntimeGitDiscardResponse,
@@ -110,7 +111,7 @@ function selectLastTurnSummary(
 	if (terminalSummary.updatedAt !== clineSummary.updatedAt) {
 		return terminalSummary.updatedAt > clineSummary.updatedAt ? terminalSummary : clineSummary;
 	}
-	if (clineSummary.agentId === "cline" && terminalSummary.agentId !== "cline") {
+	if (isNativeChatAgentId(clineSummary.agentId) && !isNativeChatAgentId(terminalSummary.agentId)) {
 		return clineSummary;
 	}
 	return terminalSummary;

@@ -4,6 +4,8 @@ import { createServer as createHttpsServer } from "node:https";
 import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
+import { createClaudeChatTaskSessionService } from "../claude-chat/claude-chat-task-session-service";
+import { createCompositeChatTaskSessionService } from "../claude-chat/composite-chat-task-session-service";
 import { handleClineMcpOauthCallback } from "../cline-sdk/cline-mcp-runtime-service";
 import {
 	type ClineTaskSessionService,
@@ -150,9 +152,12 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	): Promise<ClineTaskSessionService> => {
 		let service = clineTaskSessionServiceByWorkspaceId.get(scope.workspaceId);
 		if (!service) {
-			service = createInMemoryClineTaskSessionService({
-				watcherRegistry: clineWatcherRegistry,
-			});
+			service = createCompositeChatTaskSessionService(
+				createInMemoryClineTaskSessionService({
+					watcherRegistry: clineWatcherRegistry,
+				}),
+				createClaudeChatTaskSessionService(),
+			);
 			// Pre-warm the SDK session host in the background so the first card
 			// open or agent action does not pay the ClineCore.create cold-start
 			// cost (hub discovery + local runtime host initialization). Prewarm

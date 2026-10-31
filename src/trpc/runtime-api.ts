@@ -14,6 +14,7 @@ import { isClineClearSlashCommand } from "../cline-sdk/cline-slash-commands";
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
 import type { RuntimeConfigState } from "../config/runtime-config";
 import { updateGlobalRuntimeConfig, updateRuntimeConfig } from "../config/runtime-config";
+import { isNativeChatAgentId } from "../core/agent-catalog";
 import type {
 	RuntimeCommandRunResponse,
 	RuntimeRunUpdateResponse,
@@ -201,8 +202,8 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				const previousTerminalAgentId = body.resumeFromTrash
 					? (terminalManager.getSummary(body.taskId)?.agentId ?? null)
 					: null;
-				const effectiveAgentId = previousTerminalAgentId ?? body.agentId ?? scopedRuntimeConfig.selectedAgentId;
-				let useClinePath = effectiveAgentId === "cline";
+				let effectiveAgentId = previousTerminalAgentId ?? body.agentId ?? scopedRuntimeConfig.selectedAgentId;
+				let useClinePath = isNativeChatAgentId(effectiveAgentId);
 				const shouldProbePersistedClineSession =
 					body.resumeFromTrash && !useClinePath && previousTerminalAgentId === null;
 				if (shouldProbePersistedClineSession) {
@@ -215,7 +216,28 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						.catch(() => null);
 					if (persistedSession) {
 						useClinePath = true;
+						if (persistedSession.agentId === "claude-chat") {
+							effectiveAgentId = "claude-chat";
+						}
 					}
+				}
+
+				if (useClinePath && effectiveAgentId === "claude-chat") {
+					const claudeChatService = await deps.getScopedClineTaskSessionService(workspaceScope);
+					const summary = await claudeChatService.startTaskSession({
+						taskId: body.taskId,
+						cwd: taskCwd,
+						prompt: body.prompt,
+						images: body.images,
+						resumeFromTrash: body.resumeFromTrash,
+						agentId: "claude-chat",
+						autonomousModeEnabled: scopedRuntimeConfig.agentAutonomousModeEnabled,
+						startInPlanMode: body.startInPlanMode,
+						mode: requestedClineTaskMode,
+						modelId: body.agentSettings?.modelId ?? null,
+						agentReasoningEffort: body.agentSettings?.reasoningEffort ?? null,
+					});
+					return { ok: true, summary };
 				}
 
 				if (useClinePath) {
@@ -421,7 +443,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				};
 			}
 		},
-		getClineSlashCommands: async (workspaceScope) => {
+		getClineSlashCommands: async (workspaceScope, taskId) => {
 			if (!workspaceScope) {
 				return {
 					commands: [],
@@ -429,7 +451,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 			}
 			const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 			return {
-				commands: await clineTaskSessionService.listSlashCommands(workspaceScope.workspacePath),
+				commands: await clineTaskSessionService.listSlashCommands(workspaceScope.workspacePath, taskId),
 			};
 		},
 		reloadTaskChatSession: async (workspaceScope, input) => {

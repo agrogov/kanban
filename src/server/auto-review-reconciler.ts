@@ -11,6 +11,7 @@
 // workspace with no auto-review candidates costs zero git work.
 
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
+import { isNativeChatAgentId } from "../core/agent-catalog";
 import type {
 	RuntimeAgentId,
 	RuntimeBoardCard,
@@ -423,7 +424,7 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 	}): Promise<boolean> => {
 		const action = resolveAutoReviewMode(input.card);
 		const prompt = buildGitActionPrompt(action, input.card.baseRef, input.templates);
-		if (input.effectiveAgent === "cline") {
+		if (isNativeChatAgentId(input.effectiveAgent)) {
 			return await triggerClineGitAction(input.workspace.workspaceId, input.card, prompt);
 		}
 		if (!input.workspace.terminalManager) {
@@ -535,7 +536,7 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 
 				// Never arm a card whose delivery channel is missing: it could only
 				// "complete" via the staleness timeout, which silently strands it.
-				if (effectiveAgent === "cline") {
+				if (isNativeChatAgentId(effectiveAgent)) {
 					const service = deps.getClineTaskSessionService?.(workspace.workspaceId) ?? null;
 					const sessionSummary = service?.getSummary(card.id) ?? null;
 					if (!service || !sessionSummary) {

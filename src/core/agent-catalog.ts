@@ -44,6 +44,21 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		},
 	},
 	{
+		id: "claude-chat",
+		label: "Claude Code (chat view)",
+		description: "Claude Code in a native chat view: selectable text, normal context menu. No terminal.",
+		binary: "claude",
+		baseArgs: [],
+		autonomousArgs: ["--permission-mode", "auto"],
+		installUrl: "https://docs.anthropic.com/en/docs/claude-code/quickstart",
+		capabilities: {
+			modelOverride: "flag",
+			effortOverride: "flag",
+			providerOverride: "none",
+			docsUrl: "https://code.claude.com/docs/en/cli-reference",
+		},
+	},
+	{
 		id: "codex",
 		label: "OpenAI Codex",
 		description: "OpenAI's coding agent CLI with access to the latest GPT models.",
@@ -256,6 +271,11 @@ export function getRuntimeLaunchSupportedAgentCatalog(): RuntimeAgentCatalogEntr
 
 export function getRuntimeAgentCatalogEntry(agentId: RuntimeAgentId): RuntimeAgentCatalogEntry | null {
 	return RUNTIME_AGENT_CATALOG.find((entry) => entry.id === agentId) ?? null;
+}
+
+/** Agents rendered as a native chat panel and driven through a ClineTaskSessionService instead of a PTY. */
+export function isNativeChatAgentId(agentId: RuntimeAgentId | null | undefined): boolean {
+	return agentId === "cline" || agentId === "claude-chat";
 }
 
 /** Core Pi has no plan mode; other launch-supported CLIs do or emulate it. */

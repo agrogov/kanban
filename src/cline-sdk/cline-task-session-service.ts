@@ -3,6 +3,7 @@
 // history, and subscribe to summaries and chat events without knowing SDK
 // host, repository, or event-adapter details.
 import type {
+	RuntimeAgentId,
 	RuntimeClineReasoningEffort,
 	RuntimeTaskImage,
 	RuntimeTaskSessionMode,
@@ -79,6 +80,11 @@ export interface StartClineTaskSessionRequest {
 	// card effort value that was ignored in favor of provider settings).
 	startWarnings?: string[];
 	systemPrompt?: string | null;
+	/** Chat-view agent to start instead of the embedded Cline SDK (e.g. "claude-chat"); read by the composite router. */
+	agentId?: RuntimeAgentId | null;
+	autonomousModeEnabled?: boolean;
+	/** Free-form effort for chat-view agents whose vocabulary differs from Cline's. */
+	agentReasoningEffort?: string | null;
 }
 
 export interface ClineTaskSessionService {
@@ -100,7 +106,8 @@ export interface ClineTaskSessionService {
 	getSummary(taskId: string): RuntimeTaskSessionSummary | null;
 	listSummaries(): RuntimeTaskSessionSummary[];
 	listMessages(taskId: string): ClineTaskMessage[];
-	listSlashCommands(workspacePath: string): Promise<ClineSdkSlashCommand[]>;
+	/** `taskId` lets a composite service pick the chat backend that owns the task's command set. */
+	listSlashCommands(workspacePath: string, taskId?: string): Promise<ClineSdkSlashCommand[]>;
 	loadTaskSessionMessages(taskId: string): Promise<ClineTaskMessage[]>;
 	applyTurnCheckpoint(taskId: string, checkpoint: RuntimeTaskTurnCheckpoint): RuntimeTaskSessionSummary | null;
 	/** Eagerly initialize the SDK session host so the first card open or action does not pay the cold-start cost. */

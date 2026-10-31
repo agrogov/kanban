@@ -257,7 +257,7 @@ export function ClineChatComposer({
 			})();
 		},
 		CLINE_CHAT_COMPOSER_COMPLETION_DEBOUNCE_MS,
-		[activeToken, workspaceId],
+		[activeToken, workspaceId, taskId],
 	);
 
 	useDebouncedEffect(
@@ -265,7 +265,7 @@ export function ClineChatComposer({
 			if (!activeToken || activeToken.kind !== "slash") {
 				return;
 			}
-			const requestKey = workspaceId ?? "__global__";
+			const requestKey = `${workspaceId ?? "__global__"}:${taskId}`;
 			const requestId = ++slashCommandsRequestIdRef.current;
 			const cachedCommands = slashCommandsCacheRef.current.get(requestKey);
 			const applyCommands = (commands: RuntimeSlashCommand[]) => {
@@ -297,7 +297,7 @@ export function ClineChatComposer({
 			setIsSlashSearchLoading(true);
 			void (async () => {
 				try {
-					const payload = await getRuntimeTrpcClient(workspaceId).runtime.getClineSlashCommands.query();
+					const payload = await getRuntimeTrpcClient(workspaceId).runtime.getClineSlashCommands.query({ taskId });
 					if (requestId !== slashCommandsRequestIdRef.current) {
 						return;
 					}

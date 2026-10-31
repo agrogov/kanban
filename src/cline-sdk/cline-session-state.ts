@@ -383,7 +383,7 @@ function stringifyPayload(payload: unknown): string {
 	}
 }
 
-function buildToolCallContent(input: {
+export function buildToolCallContent(input: {
 	toolName: string | null;
 	input: unknown;
 	output?: unknown;
@@ -413,7 +413,7 @@ function buildToolCallContent(input: {
 	return lines.join("\n");
 }
 
-function updateMessageInEntry(
+export function updateMessageInEntry(
 	entry: ClineTaskSessionEntry,
 	messageId: string,
 	updater: (currentMessage: ClineTaskMessage) => ClineTaskMessage,
