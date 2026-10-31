@@ -332,6 +332,7 @@ describe.sequential("task-worktree integration", () => {
 				});
 				expect(deleted.ok).toBe(true);
 				expect(deleted.removed).toBe(true);
+				expect(runGit(repoPath, ["rev-parse", `refs/kanban/trashed/${taskId}`])).toBe(createdCommit);
 
 				const patchPath = join(
 					process.env.HOME ?? sandboxRoot,

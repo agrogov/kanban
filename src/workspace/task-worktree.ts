@@ -205,6 +205,14 @@ async function listUntrackedPaths(worktreePath: string): Promise<string[]> {
 		.filter((path) => path.length > 0);
 }
 
+const TRASHED_TASK_REF_PREFIX = "refs/kanban/trashed/";
+
+// Task worktrees sit on a detached HEAD, so commits the agent made there become unreachable once the
+// worktree is removed. Pinning HEAD under a ref keeps that work safe from git gc.
+async function preserveTaskHeadCommit(taskId: string, worktreePath: string): Promise<void> {
+	await runGit(worktreePath, ["update-ref", `${TRASHED_TASK_REF_PREFIX}${taskId}`, "HEAD"]);
+}
+
 async function captureTaskPatch(options: { repoPath: string; taskId: string; worktreePath: string }): Promise<void> {
 	const headCommit = await getGitStdout(["rev-parse", "--verify", "HEAD"], options.worktreePath);
 
@@ -674,6 +682,7 @@ export async function deleteTaskWorktree(options: {
 			};
 		}
 
+		await preserveTaskHeadCommit(taskId, worktreePath).catch(() => undefined);
 		try {
 			await captureTaskPatch({
 				repoPath: options.repoPath,

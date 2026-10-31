@@ -98,13 +98,15 @@ function createFakeTerminalManager() {
 	const getSummary = vi.fn((taskId: string) =>
 		unavailableTaskIds.has(taskId) ? null : ({ taskId } as unknown as RuntimeTaskSessionSummary),
 	);
+	const stopTaskSession = vi.fn((_taskId: string) => null);
 	return {
 		writeInput,
 		getSummary,
+		stopTaskSession,
 		dropSession: (taskId: string) => {
 			unavailableTaskIds.add(taskId);
 		},
-		manager: { writeInput, getSummary } as unknown as TerminalSessionManager,
+		manager: { writeInput, getSummary, stopTaskSession } as unknown as TerminalSessionManager,
 	};
 }
 
@@ -149,6 +151,7 @@ function createHarness(options: HarnessOptions) {
 	});
 	const terminal = createFakeTerminalManager();
 	const onBoardMutated = vi.fn();
+	const deleteTaskWorktree = vi.fn(async () => ({ ok: true }));
 	const warn = vi.fn();
 	let staleSnapshot: RuntimeWorkspaceStateResponse | null = null;
 
@@ -172,6 +175,7 @@ function createHarness(options: HarnessOptions) {
 		getSelectedAgentId: async () => options.selectedAgentId ?? null,
 		getClineTaskSessionService: () => options.clineService ?? null,
 		probeTaskWorkspace,
+		deleteTaskWorktree,
 		onBoardMutated,
 		...(options.now ? { now: options.now } : {}),
 		warn,
@@ -184,6 +188,7 @@ function createHarness(options: HarnessOptions) {
 		store,
 		terminal,
 		probeTaskWorkspace,
+		deleteTaskWorktree,
 		onBoardMutated,
 		warn,
 		setProbe(taskId: string, probe: AutoReviewTaskProbe) {
@@ -240,6 +245,51 @@ describe("auto-review reconciler", () => {
 		expect(completed?.columnId).toBe("trash");
 		expect(completed?.card.pendingGitAction ?? null).toBeNull();
 		expect(harness.onBoardMutated).toHaveBeenCalled();
+	});
+
+	it("lands commits the agent already made itself on a clean tree", async () => {
+		const card = createCard({ id: "task-1", autoReviewEnabled: true });
+		const harness = createHarness({ board: createBoard({ review: [card] }) });
+		harness.setProbe("task-1", { exists: true, headCommit: "commit-1", changedFiles: 0, unlandedCommits: 1 });
+
+		await harness.evaluate();
+
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.card.pendingGitAction).toEqual({
+			action: "commit",
+			requestedAt: expect.any(Number),
+			headCommitAtRequest: "commit-1",
+			attempt: 0,
+		});
+		expect(harness.terminal.writeInput).toHaveBeenCalledTimes(1);
+
+		// Still unlanded: the card stays armed.
+		await harness.evaluate();
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("review");
+
+		// The cherry-pick lands on the base ref without moving the task HEAD: the card completes.
+		harness.setProbe("task-1", { exists: true, headCommit: "commit-1", changedFiles: 0, unlandedCommits: 0 });
+		await harness.evaluate();
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("trash");
+		expect(harness.terminal.stopTaskSession).toHaveBeenCalledWith("task-1");
+		expect(harness.deleteTaskWorktree).toHaveBeenCalledWith({ repoPath: "/repo", taskId: "task-1" });
+	});
+
+	it("keeps the card in review until its commits have landed on the base ref", async () => {
+		const card = createCard({ id: "task-1", autoReviewEnabled: true });
+		const harness = createHarness({ board: createBoard({ review: [card] }) });
+		harness.setProbe("task-1", { exists: true, headCommit: "commit-1", changedFiles: 2, unlandedCommits: 0 });
+		await harness.evaluate();
+
+		// The agent committed (HEAD moved) but has not cherry-picked yet.
+		harness.setProbe("task-1", { exists: true, headCommit: "commit-2", changedFiles: 0, unlandedCommits: 1 });
+		await harness.evaluate();
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("review");
+		expect(harness.deleteTaskWorktree).not.toHaveBeenCalled();
+
+		harness.setProbe("task-1", { exists: true, headCommit: "commit-2", changedFiles: 0, unlandedCommits: 0 });
+		await harness.evaluate();
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("trash");
+		expect(harness.deleteTaskWorktree).toHaveBeenCalledTimes(1);
 	});
 
 	it("completes an armed card from persisted state after a runtime restart", async () => {

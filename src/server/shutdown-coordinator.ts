@@ -1,8 +1,7 @@
 import type { RuntimeTaskSessionSummary, RuntimeWorkspaceStateResponse } from "../core/api-contract";
-import { updateTaskDependencies } from "../core/task-board-mutations";
 import { listWorkspaceIndexEntries, loadWorkspaceState, saveWorkspaceState } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
-import { deleteTaskWorktree, removeTaskWorktreeSetupLock } from "../workspace/task-worktree";
+import { removeTaskWorktreeSetupLock } from "../workspace/task-worktree";
 import type { WorkspaceRegistry } from "./workspace-registry";
 import { collectProjectWorktreeTaskIdsForRemoval } from "./workspace-registry";
 
@@ -13,46 +12,8 @@ export interface RuntimeShutdownCoordinatorDependencies {
 	skipSessionCleanup?: boolean;
 }
 
-function moveTaskToTrash(
-	board: RuntimeWorkspaceStateResponse["board"],
-	taskId: string,
-): RuntimeWorkspaceStateResponse["board"] {
-	const columns = board.columns.map((column) => ({
-		...column,
-		cards: [...column.cards],
-	}));
-	let removedCard: RuntimeWorkspaceStateResponse["board"]["columns"][number]["cards"][number] | undefined;
-
-	for (const column of columns) {
-		const cardIndex = column.cards.findIndex((candidate) => candidate.id === taskId);
-		if (cardIndex === -1) {
-			continue;
-		}
-		removedCard = column.cards[cardIndex];
-		column.cards.splice(cardIndex, 1);
-		break;
-	}
-
-	if (!removedCard) {
-		return board;
-	}
-	const trashColumnIndex = columns.findIndex((column) => column.id === "trash");
-	if (trashColumnIndex === -1) {
-		return board;
-	}
-	const trashColumn = columns[trashColumnIndex];
-	if (!trashColumn.cards.some((candidate) => candidate.id === taskId)) {
-		trashColumn.cards.unshift({
-			...removedCard,
-			updatedAt: Date.now(),
-		});
-	}
-	return updateTaskDependencies({
-		...board,
-		columns,
-	});
-}
-
+// Shutdown only marks sessions as interrupted. Cards stay in their column and their worktrees stay on disk,
+// so committed and uncommitted task work survives a restart and the user can resume the task.
 async function persistInterruptedSessions(
 	workspacePath: string,
 	interruptedTaskIds: string[],
@@ -60,17 +21,11 @@ async function persistInterruptedSessions(
 		workspaceState?: RuntimeWorkspaceStateResponse;
 		resolveSummary?: (taskId: string) => RuntimeTaskSessionSummary | null;
 	},
-): Promise<string[]> {
+): Promise<void> {
 	if (interruptedTaskIds.length === 0) {
-		return [];
+		return;
 	}
 	const workspaceState = options?.workspaceState ?? (await loadWorkspaceState(workspacePath));
-	const worktreeTaskIds = collectProjectWorktreeTaskIdsForRemoval(workspaceState.board);
-	const worktreeTaskIdsToCleanup = interruptedTaskIds.filter((taskId) => worktreeTaskIds.has(taskId));
-	let nextBoard = workspaceState.board;
-	for (const taskId of interruptedTaskIds) {
-		nextBoard = moveTaskToTrash(nextBoard, taskId);
-	}
 	const nextSessions = {
 		...workspaceState.sessions,
 	};
@@ -87,36 +42,9 @@ async function persistInterruptedSessions(
 		}
 	}
 	await saveWorkspaceState(workspacePath, {
-		board: nextBoard,
+		board: workspaceState.board,
 		sessions: nextSessions,
 	});
-	return worktreeTaskIdsToCleanup;
-}
-
-async function cleanupInterruptedTaskWorktrees(
-	repoPath: string,
-	taskIds: string[],
-	warn: (message: string) => void,
-): Promise<void> {
-	if (taskIds.length === 0) {
-		return;
-	}
-	const deletions = await Promise.all(
-		taskIds.map(async (taskId) => ({
-			taskId,
-			deleted: await deleteTaskWorktree({
-				repoPath,
-				taskId,
-			}),
-		})),
-	);
-	for (const { taskId, deleted } of deletions) {
-		if (deleted.ok) {
-			continue;
-		}
-		const message = deleted.error ?? `Could not delete task workspace for task "${taskId}" during shutdown.`;
-		warn(message);
-	}
 }
 
 async function cleanupTaskWorktreeSetupLocks(
@@ -222,15 +150,10 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 
 	await Promise.all(
 		interruptedByWorkspace.map(async (workspace) => {
-			const worktreeTaskIds = await persistInterruptedSessions(
-				workspace.workspacePath,
-				workspace.interruptedTaskIds,
-				{
-					workspaceState: workspace.workspaceState,
-					resolveSummary: workspace.resolveSummary,
-				},
-			);
-			await cleanupInterruptedTaskWorktrees(workspace.workspacePath, worktreeTaskIds, deps.warn);
+			await persistInterruptedSessions(workspace.workspacePath, workspace.interruptedTaskIds, {
+				workspaceState: workspace.workspaceState,
+				resolveSummary: workspace.resolveSummary,
+			});
 		}),
 	);
 

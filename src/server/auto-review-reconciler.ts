@@ -28,7 +28,8 @@ import type {
 } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import { probeGitWorkspaceState } from "../workspace/git-sync";
-import { getTaskWorkspacePathInfo } from "../workspace/task-worktree";
+import { runGit } from "../workspace/git-utils";
+import { deleteTaskWorktree as deleteTaskWorktreeFromDisk, getTaskWorkspacePathInfo } from "../workspace/task-worktree";
 
 /**
  * Evaluation cadence. Nothing here is latency critical: a slower interval
@@ -62,6 +63,12 @@ export interface AutoReviewTaskProbe {
 	exists: boolean;
 	headCommit: string | null;
 	changedFiles: number;
+	/**
+	 * Commits in the task worktree that have not landed on the base ref yet (patch-equivalent
+	 * commits already cherry-picked there do not count). Covers agents that commit their own work,
+	 * which leaves a clean tree that would otherwise look like "nothing to do".
+	 */
+	unlandedCommits?: number;
 }
 
 export type MutateWorkspaceState = <T>(
@@ -90,6 +97,8 @@ export interface CreateAutoReviewReconcilerDependencies {
 	 * observe the change later.
 	 */
 	onBoardMutated?: (workspaceId: string, workspacePath: string) => Promise<void> | void;
+	/** Removes a landed task's worktree; defaults to the real implementation. */
+	deleteTaskWorktree?: (input: { repoPath: string; taskId: string }) => Promise<unknown>;
 	evaluationIntervalMs?: number;
 	now?: () => number;
 	warn?: (message: string) => void;
@@ -204,12 +213,25 @@ async function defaultProbeTaskWorkspace(input: {
 	if (!pathInfo.exists) {
 		return { exists: false, headCommit: null, changedFiles: 0 };
 	}
-	const probe = await probeGitWorkspaceState(pathInfo.path);
+	const [probe, unlandedCommits] = await Promise.all([
+		probeGitWorkspaceState(pathInfo.path),
+		countUnlandedCommits(pathInfo.path, input.baseRef),
+	]);
 	return {
 		exists: true,
 		headCommit: probe.headCommit,
 		changedFiles: probe.changedFiles,
+		unlandedCommits,
 	};
+}
+
+async function countUnlandedCommits(worktreePath: string, baseRef: string): Promise<number> {
+	// `git cherry` prefixes commits missing from the base with "+" and patch-equivalent ones with "-".
+	const result = await runGit(worktreePath, ["cherry", baseRef, "HEAD"]);
+	if (!result.ok) {
+		return 0;
+	}
+	return result.stdout.split("\n").filter((line) => line.startsWith("+")).length;
 }
 
 export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDependencies): AutoReviewReconciler {
@@ -318,6 +340,23 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 			return response.value;
 		} catch {
 			return false;
+		}
+	};
+
+	// The task is merged into its base ref: stop its agent and drop the worktree (the UI's
+	// trash workflow does the same when a card is trashed by hand). Best-effort; the card is
+	// already in Done and the worktree can still be cleared manually.
+	const cleanupLandedTask = async (
+		workspace: AutoReviewWorkspace,
+		workspacePath: string,
+		taskId: string,
+	): Promise<void> => {
+		try {
+			workspace.terminalManager?.stopTaskSession(taskId);
+			await deps.getClineTaskSessionService?.(workspace.workspaceId)?.stopTaskSession(taskId);
+			await (deps.deleteTaskWorktree ?? deleteTaskWorktreeFromDisk)({ repoPath: workspacePath, taskId });
+		} catch (error) {
+			deps.warn?.(`Auto-review could not clean up the worktree of task "${taskId}": ${String(error)}`);
 		}
 	};
 
@@ -477,13 +516,18 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 					// Completion is judged on evidence: HEAD moved past the commit
 					// recorded at arming time. Zero changed files alone proves nothing.
 					const probe = await probeTask(card);
-					if (
-						probe.exists &&
-						probe.headCommit !== null &&
-						probe.headCommit !== pendingGitAction.headCommitAtRequest
-					) {
-						if (stillTracked() && (await completePendingGitAction(workspacePath, card.id, timestamp))) {
-							boardMutated = true;
+					// With landing info the card is done only once nothing is left to land on the base
+					// ref; without it (probe failed) fall back to HEAD having moved past the arming commit.
+					const landingKnown = probe.exists && probe.unlandedCommits !== undefined;
+					const completed = landingKnown
+						? probe.unlandedCommits === 0 && probe.changedFiles === 0
+						: probe.exists &&
+							probe.headCommit !== null &&
+							probe.headCommit !== pendingGitAction.headCommitAtRequest;
+					if (completed && stillTracked() && (await completePendingGitAction(workspacePath, card.id, timestamp))) {
+						boardMutated = true;
+						if (landingKnown) {
+							await cleanupLandedTask(workspace, workspacePath, card.id);
 						}
 					}
 					continue;
@@ -509,9 +553,10 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 				}
 
 				const probe = await probeTask(card);
-				// Review entries with zero changes (common during planning loops)
+				// Review entries with nothing to land (common during planning loops)
 				// are intentionally ignored.
-				if (!probe.exists || probe.changedFiles <= 0 || runtime.gitActionInFlightTaskIds.has(card.id)) {
+				const hasWorkToLand = probe.changedFiles > 0 || (probe.unlandedCommits ?? 0) > 0;
+				if (!probe.exists || !hasWorkToLand || runtime.gitActionInFlightTaskIds.has(card.id)) {
 					continue;
 				}
 
