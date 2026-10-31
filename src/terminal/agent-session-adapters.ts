@@ -13,11 +13,13 @@ import type {
 } from "../core/api-contract";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { buildKanbanCommandParts } from "../core/kanban-command";
+import { getKanbanRuntimeHost, getKanbanRuntimePort } from "../core/runtime-endpoint";
 import { quoteShellArg } from "../core/shell";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import { getRuntimeHomePath } from "../state/workspace-state";
-import { ensureAgencProjectTrusted } from "./agenc-project-trust";
+import { runGit } from "../workspace/git-utils";
+import { ensureAgencCacheGitExcluded, ensureAgencProjectTrusted } from "./agenc-project-trust";
 import { isTaskWorktreePath } from "./claude-workspace-trust";
 import { configureCodexHooks, hasCodexConfigOverride } from "./codex-hook-config";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
@@ -2228,9 +2230,16 @@ const clineCliAdapter: AgentSessionAdapter = {
 
 // AgenC loads an explicit TOML layer via --config and runs Claude-style command hooks from it.
 // Reference: https://github.com/tetsuo-ai/agenc-core/blob/main/docs/reference/hooks.md
-function buildAgencHooksToml(options: { allowNetwork?: boolean } = {}): string {
+function buildAgencHooksToml(
+	options: { allowNetwork?: boolean; hookEnv?: Record<string, string>; allowWritePaths?: string[] } = {},
+): string {
+	// AgenC scrubs the environment of hook subprocesses, so the task identity and runtime endpoint
+	// are baked into each command instead of relying on inherited variables.
+	const envAssignments = Object.entries(options.hookEnv ?? {}).map(([key, value]) => `${key}=${value}`);
+	const envPrefix = envAssignments.length > 0 ? `env ${envAssignments.map(quoteShellArg).join(" ")} ` : "";
 	const command = (event: RuntimeHookEvent, name: string) =>
-		`{ type = "command", command = ${JSON.stringify(buildHooksCommand(["notify", "--event", event, "--source", "agenc", "--hook-event-name", name]))} }`;
+		`{ type = "command", command = ${JSON.stringify(`${envPrefix}${buildHooksCommand(["notify", "--event", event, "--source", "agenc", "--hook-event-name", name])}`)} }`;
+	const writablePaths = [...(options.allowNetwork ? [getRuntimeHomePath()] : []), ...(options.allowWritePaths ?? [])];
 	const section = (name: string, event: RuntimeHookEvent, matcher?: string) =>
 		`[[hooks.${name}]]\n${matcher ? `matcher = ${JSON.stringify(matcher)}\n` : ""}hooks = [${command(event, name)}]\n`;
 	return [
@@ -2243,13 +2252,18 @@ function buildAgencHooksToml(options: { allowNetwork?: boolean } = {}): string {
 		// The sidebar agent drives the board through the Kanban CLI, which reaches the runtime over
 		// localhost and edits board state (plus lock dirs) under the runtime home. AgenC's OS sandbox
 		// blocks both by default. Task cards keep the default.
-		...(options.allowNetwork
-			? [
-					"[sandbox]\nnetwork_access = true\n",
-					`[sandbox.filesystem]\nallowWrite = [${JSON.stringify(getRuntimeHomePath())}]\n`,
-				]
+		...(options.allowNetwork ? ["[sandbox]\nnetwork_access = true\n"] : []),
+		// Task worktrees keep their git data in the main repo's .git, outside the workspace-write area,
+		// so commits need that directory writable.
+		...(writablePaths.length > 0
+			? [`[sandbox.filesystem]\nallowWrite = [${writablePaths.map((path) => JSON.stringify(path)).join(", ")}]\n`]
 			: []),
 	].join("\n");
+}
+
+async function resolveGitCommonDir(cwd: string): Promise<string | null> {
+	const result = await runGit(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+	return result.ok && result.stdout ? result.stdout : null;
 }
 
 // AgenC's OpenAI-compatible provider reads OPENAI_COMPATIBLE_BASE_URL / OPENAI_COMPATIBLE_API_KEY.
@@ -2273,10 +2287,20 @@ const agencAdapter: AgentSessionAdapter = {
 		const hooks = resolveHookContext(input);
 		if (hooks && !hasCliOption(args, "--config")) {
 			const allowNetwork = isHomeAgentSessionId(input.taskId);
-			const configPath = join(getHookAgentDirectory("agenc"), allowNetwork ? "config-home.toml" : "config.toml");
-			await ensureTextFile(configPath, buildAgencHooksToml({ allowNetwork }));
+			const hookEnv = {
+				...createHookRuntimeEnv({ taskId: hooks.taskId, workspaceId: hooks.workspaceId }),
+				KANBAN_RUNTIME_HOST: getKanbanRuntimeHost(),
+				KANBAN_RUNTIME_PORT: String(getKanbanRuntimePort()),
+			};
+			const gitCommonDir = isTaskWorktreePath(input.cwd) ? await resolveGitCommonDir(input.cwd) : null;
+			const configName = `config-${allowNetwork ? "home-" : ""}${hooks.taskId.replace(/[^A-Za-z0-9_-]/g, "_")}.toml`;
+			const configPath = join(getHookAgentDirectory("agenc"), configName);
+			await ensureTextFile(
+				configPath,
+				buildAgencHooksToml({ allowNetwork, hookEnv, allowWritePaths: gitCommonDir ? [gitCommonDir] : [] }),
+			);
 			args.push("--config", configPath);
-			Object.assign(env, createHookRuntimeEnv({ taskId: hooks.taskId, workspaceId: hooks.workspaceId }));
+			Object.assign(env, hookEnv);
 			// Lets command hooks run in untrusted workspaces. This does not skip AgenC's separate
 			// project-trust prompt, which still appears once per new task worktree.
 			env.AGENC_ALLOW_UNTRUSTED_HOOKS = "1";
@@ -2284,6 +2308,7 @@ const agencAdapter: AgentSessionAdapter = {
 			if (isTaskWorktreePath(input.cwd)) {
 				try {
 					await ensureAgencProjectTrusted(input.cwd, { ...process.env, ...input.env });
+					await ensureAgencCacheGitExcluded(input.cwd);
 				} catch {
 					// Fall back to AgenC's interactive trust card rather than failing the launch.
 				}

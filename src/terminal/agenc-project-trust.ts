@@ -5,7 +5,8 @@
 import { existsSync, realpathSync } from "node:fs";
 import { chmod, mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, parse, resolve } from "node:path";
+import { dirname, isAbsolute, join, parse, resolve } from "node:path";
+import { runGit } from "../workspace/git-utils";
 
 const TRUSTED_PROJECTS_FILENAME = "trusted-projects.json";
 const LOCK_TIMEOUT_MS = 5_000;
@@ -133,4 +134,24 @@ export async function ensureAgencProjectTrusted(
 		await chmod(storePath, 0o600).catch(() => undefined);
 	});
 	return projectRoot;
+}
+
+// AgenC keeps its Go/lint build caches in this folder inside the workspace. Left untracked it is
+// counted as millions of added lines and would be swept into auto-commits.
+const AGENC_CACHE_EXCLUDE_ENTRY = "/.agenc-cache/";
+
+/** Adds AgenC's in-workspace cache folder to the repo's local git excludes (shared by all worktrees). */
+export async function ensureAgencCacheGitExcluded(cwd: string): Promise<void> {
+	const result = await runGit(cwd, ["rev-parse", "--git-path", "info/exclude"]);
+	if (!result.ok || !result.stdout) {
+		return;
+	}
+	const excludePath = isAbsolute(result.stdout) ? result.stdout : join(cwd, result.stdout);
+	const existing = await readFile(excludePath, "utf8").catch(() => "");
+	if (existing.split("\n").some((line) => line.trim() === AGENC_CACHE_EXCLUDE_ENTRY)) {
+		return;
+	}
+	await mkdir(dirname(excludePath), { recursive: true });
+	const separator = existing.length === 0 || existing.endsWith("\n") ? "" : "\n";
+	await writeFile(excludePath, `${existing}${separator}${AGENC_CACHE_EXCLUDE_ENTRY}\n`);
 }

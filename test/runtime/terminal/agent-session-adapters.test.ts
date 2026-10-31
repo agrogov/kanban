@@ -131,6 +131,23 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(taskToml).not.toContain("allowWrite");
 	});
 
+	it("bakes the task identity into every AgenC hook command", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			agentId: "agenc",
+			binary: "agenc",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			taskId: "task-1",
+			workspaceId: "workspace-1",
+		});
+		const toml = readFileSync(launch.args[launch.args.indexOf("--config") + 1] as string, "utf8");
+		expect(toml).toContain("KANBAN_HOOK_TASK_ID=task-1");
+		expect(toml).toContain("KANBAN_HOOK_WORKSPACE_ID=workspace-1");
+		expect(toml).toContain("KANBAN_RUNTIME_PORT=");
+	});
+
 	it("applies saved AgenC connection settings as provider env and flags", async () => {
 		setupTempHome();
 		await updateGlobalRuntimeConfig(await loadGlobalRuntimeConfig(), {
