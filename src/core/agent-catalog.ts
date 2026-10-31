@@ -198,6 +198,23 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		},
 	},
 	{
+		id: "pi-chat",
+		label: "Pi (chat view)",
+		description: "Pi in a native chat view: selectable text, normal context menu. No terminal.",
+		binary: "pi",
+		baseArgs: [],
+		autonomousArgs: [],
+		installUrl: "https://pi.dev/",
+		installHint:
+			"Install with npm i -g --ignore-scripts @earendil-works/pi-coding-agent or curl -fsSL https://pi.dev/install.sh | sh.",
+		capabilities: {
+			modelOverride: "flag",
+			effortOverride: "flag",
+			providerOverride: "flag",
+			docsUrl: "https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/usage.md",
+		},
+	},
+	{
 		id: "agenc",
 		label: "AgenC",
 		description: "Open source terminal coding agent from tetsuo-ai that works with any model provider.",
@@ -290,7 +307,7 @@ export function getRuntimeAgentCatalogEntry(agentId: RuntimeAgentId): RuntimeAge
 
 /** Agents rendered as a native chat panel and driven through a ClineTaskSessionService instead of a PTY. */
 export function isNativeChatAgentId(agentId: RuntimeAgentId | null | undefined): boolean {
-	return agentId === "cline" || agentId === "claude-chat" || agentId === "codex-chat";
+	return agentId === "cline" || agentId === "claude-chat" || agentId === "codex-chat" || agentId === "pi-chat";
 }
 
 /** Core Pi has no plan mode; other launch-supported CLIs do or emulate it. */

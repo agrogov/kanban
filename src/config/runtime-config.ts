@@ -75,6 +75,7 @@ const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = [
 	"kiro",
 	"grok",
 	"pi",
+	"pi-chat",
 	"devin",
 ];
 const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = true;
@@ -154,6 +155,7 @@ function normalizeAgentId(agentId: RuntimeAgentId | string | null | undefined): 
 			agentId === "kiro" ||
 			agentId === "grok" ||
 			agentId === "pi" ||
+			agentId === "pi-chat" ||
 			agentId === "agenc" ||
 			agentId === "cline" ||
 			agentId === "cline-cli" ||

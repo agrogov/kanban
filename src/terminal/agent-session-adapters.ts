@@ -2357,6 +2357,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	kiro: kiroAdapter,
 	grok: grokAdapter,
 	pi: piAdapter,
+	"pi-chat": piAdapter,
 	agenc: agencAdapter,
 	cline: clineAdapter,
 	"cline-cli": clineCliAdapter,

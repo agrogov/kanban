@@ -93,6 +93,7 @@ describe("buildRuntimeConfigResponse", () => {
 			"kiro",
 			"grok",
 			"pi",
+			"pi-chat",
 			"agenc",
 			"devin",
 		]);
@@ -137,6 +138,7 @@ describe("buildRuntimeConfigResponse", () => {
 			"kiro",
 			"grok",
 			"pi",
+			"pi-chat",
 			"agenc",
 			"devin",
 		]);

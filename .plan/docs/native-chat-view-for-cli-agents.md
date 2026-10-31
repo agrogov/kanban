@@ -29,13 +29,13 @@ Session summaries/state machine feed the same board transitions (review/in_progr
 |---|---|---|
 | Claude | **Implemented:** `@anthropic-ai/claude-agent-sdk` `query()` in streaming-input mode, one long-lived query per task (`src/claude-chat/`). Agent id `claude-chat` sits beside terminal `claude`. Uses `claude` from PATH (falls back to the SDK-bundled binary). `interrupt()` cancels a turn and keeps the session; the resulting `error_during_execution` result is swallowed. Resume via `resume`/`sessionId`. | Reducer shapes match the CLI stream-json. Approvals not yet wired: `canUseTool` could drive approve/deny cards; non-autonomous mode currently has no prompt UI. |
 | Codex | **Decided: `@openai/codex-sdk`** (`codex-chat`): one `codex exec` per turn, resume by thread id, full-item events (no token deltas). Implemented in `src/codex-chat/` on the shared `src/native-chat/` base. | No per-tool approval callback, so approvals would need `codex app-server`. Plan mode = read-only sandbox; autonomous = danger-full-access. |
-| Pi | `pi --mode rpc` (stdin/stdout JSON) | AGENTS.md currently forbids `--mode json` for task sessions (keeps the TUI + JSONL watcher). Native chat would be a distinct opt-in mode, not a replacement of the TUI path; can also start read-only by rendering the JSONL the watcher already parses. |
+| Pi | `@earendil-works/pi-coding-agent` SDK (`createAgentSession`, in-process) | Shipped as `pi-chat` (`src/pi-chat/`). One AgentSession per task, persisted in a per-conversation session dir; plan mode = read-only tool allowlist. Not `--mode json`/rpc, so the AGENTS.md rule for the terminal `pi` path is untouched. Model is `provider/id` or a bare id; credentials and extensions come from `~/.pi/agent`. |
 
 ## Phases
 1. **Refactor (no behavior change):** extract `AgentChatBackend`, make handlers/UI gate agent-agnostic, wrap Cline.
 2. **Claude backend** (best protocol, biggest payoff): spawn/stream-json adapter -> `RuntimeTaskChatMessage`,
    cancel (interrupt), image input, permission cards, summary/state mapping, session resume after restart.
-3. **Pi backend:** rpc adapter; reuse `mapPiSessionEntry` for history hydration.
+3. **Pi backend:** done via the SDK (see table).
 4. **Codex backend:** app-server adapter with generated types; approvals; resume.
 5. **Settings/UX:** per-agent toggle "Chat view / Terminal view" (keep terminal as fallback and for TUI-only
    features: slash commands, dialogs); show a "Open terminal" escape hatch.

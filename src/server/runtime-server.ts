@@ -30,6 +30,7 @@ import {
 	isKanbanRemoteHost,
 } from "../core/runtime-endpoint";
 import { createCompositeChatTaskSessionService } from "../native-chat/composite-chat-task-session-service";
+import { createPiChatTaskSessionService, PI_CHAT_AGENT_ID } from "../pi-chat/pi-chat-task-session-service";
 import {
 	checkRateLimit,
 	clearRateLimit,
@@ -163,6 +164,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				[
 					{ agentId: CLAUDE_CHAT_AGENT_ID, service: createClaudeChatTaskSessionService() },
 					{ agentId: CODEX_CHAT_AGENT_ID, service: createCodexChatTaskSessionService() },
+					{ agentId: PI_CHAT_AGENT_ID, service: createPiChatTaskSessionService() },
 				],
 			);
 			// Pre-warm the SDK session host in the background so the first card

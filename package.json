@@ -94,6 +94,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.2.128",
     "@clinebot/core": "^0.0.38",
     "@clinebot/shared": "^0.0.38",
+    "@earendil-works/pi-coding-agent": "^1.4.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@openai/codex-sdk": "^0.166.0",
     "@sentry/node": "^10.45.0",

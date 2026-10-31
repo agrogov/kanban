@@ -82,6 +82,7 @@ export const runtimeAgentIdSchema = z.enum([
 	"kiro",
 	"grok",
 	"pi",
+	"pi-chat",
 	"agenc",
 	"cline",
 	"cline-cli",
