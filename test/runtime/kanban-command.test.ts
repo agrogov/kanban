@@ -28,6 +28,20 @@ describe("resolveKanbanCommandParts", () => {
 		expect(parts).toEqual(["/usr/local/bin/node", "--import", "tsx", "/repo/src/cli.ts"]);
 	});
 
+	it("pins ELECTRON_RUN_AS_NODE for Electron-as-node runtimes so scrubbed hook envs do not boot the GUI", () => {
+		const parts = resolveKanbanCommandParts({
+			execPath: "/Applications/Kanban.app/Contents/MacOS/Kanban",
+			argv: ["/Applications/Kanban.app/Contents/MacOS/Kanban", "/app/cli/cli.js", "--no-open"],
+			electronRunAsNode: true,
+		});
+		expect(parts).toEqual([
+			"env",
+			"ELECTRON_RUN_AS_NODE=1",
+			"/Applications/Kanban.app/Contents/MacOS/Kanban",
+			"/app/cli/cli.js",
+		]);
+	});
+
 	it("falls back to execPath when no entrypoint path is available", () => {
 		const parts = resolveKanbanCommandParts({
 			execPath: "/usr/local/bin/kanban",

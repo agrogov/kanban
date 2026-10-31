@@ -2256,6 +2256,9 @@ const agencAdapter: AgentSessionAdapter = {
 		if (input.startInPlanMode && !hasCliOption(args, "--permission-mode")) {
 			args.push("--permission-mode", "plan");
 		}
+		if (input.autonomousModeEnabled && !input.startInPlanMode && !hasCliOption(args, "--bypass-approvals")) {
+			args.push("--bypass-approvals");
+		}
 
 		const hooks = resolveHookContext(input);
 		if (hooks && !hasCliOption(args, "--config")) {
