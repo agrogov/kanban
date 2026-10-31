@@ -214,6 +214,20 @@ export function mapPiSessionEntry(line: string): PiMappedSessionEvent[] {
 		});
 	}
 
+	// A failed model request (unreachable endpoint, timeout, API error) never produces a final
+	// answer, so surface it for review instead of leaving the card in progress indefinitely.
+	if (stopReason === "error" && toolCalls.length === 0) {
+		const errorMessage = readStringField(message, "errorMessage");
+		events.push({
+			event: "to_review",
+			metadata: {
+				source: "pi",
+				hookEventName: "assistant_error",
+				activityText: errorMessage ? `Error: ${normalizeWhitespace(errorMessage)}` : "Model request failed",
+			},
+		});
+	}
+
 	return events;
 }
 

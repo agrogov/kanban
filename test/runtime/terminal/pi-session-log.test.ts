@@ -111,6 +111,28 @@ describe("mapPiSessionEntry", () => {
 		]);
 	});
 
+	it("maps a stopReason=error assistant turn to review with the error message", () => {
+		expect(
+			mapPiSessionEntry(
+				sessionLine("a3", "u1", {
+					role: "assistant",
+					content: [],
+					stopReason: "error",
+					errorMessage: "Connection error.",
+				}),
+			),
+		).toEqual([
+			{
+				event: "to_review",
+				metadata: {
+					source: "pi",
+					hookEventName: "assistant_error",
+					activityText: "Error: Connection error.",
+				},
+			},
+		]);
+	});
+
 	it("maps a stopReason=stop assistant turn without tools to review", () => {
 		expect(
 			mapPiSessionEntry(
