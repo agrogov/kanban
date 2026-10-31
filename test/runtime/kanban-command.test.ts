@@ -42,6 +42,23 @@ describe("resolveKanbanCommandParts", () => {
 		]);
 	});
 
+	it("defaults to the current ELECTRON_RUN_AS_NODE environment when the caller does not say", () => {
+		const previous = process.env.ELECTRON_RUN_AS_NODE;
+		process.env.ELECTRON_RUN_AS_NODE = "1";
+		try {
+			const parts = resolveKanbanCommandParts({
+				execPath: "/Applications/Kanban.app/Contents/MacOS/Kanban",
+				argv: ["/Applications/Kanban.app/Contents/MacOS/Kanban", "/app/cli/cli.js"],
+			});
+			expect(parts.slice(0, 2)).toEqual(
+				process.platform === "win32" ? [parts[0], parts[1]] : ["env", "ELECTRON_RUN_AS_NODE=1"],
+			);
+		} finally {
+			if (previous === undefined) delete process.env.ELECTRON_RUN_AS_NODE;
+			else process.env.ELECTRON_RUN_AS_NODE = previous;
+		}
+	});
+
 	it("falls back to execPath when no entrypoint path is available", () => {
 		const parts = resolveKanbanCommandParts({
 			execPath: "/usr/local/bin/kanban",

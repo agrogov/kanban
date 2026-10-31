@@ -14,7 +14,7 @@ function resolveNodeCommandPrefix(context: RuntimeInvocationContext): string[] {
 	const execArgv = context.execArgv ?? [];
 	// Agents may scrub the environment of their hook subprocesses. Without this variable the Electron
 	// binary would boot the full GUI app (and abort outside a window-server session) instead of the CLI.
-	const envPrefix = context.electronRunAsNode ? ["env", "ELECTRON_RUN_AS_NODE=1"] : [];
+	const envPrefix = (context.electronRunAsNode ?? readElectronRunAsNode()) ? ["env", "ELECTRON_RUN_AS_NODE=1"] : [];
 	return [...envPrefix, context.execPath, ...execArgv];
 }
 
@@ -44,7 +44,6 @@ export function resolveKanbanCommandParts(
 		execPath: process.execPath,
 		argv: process.argv,
 		execArgv: process.execArgv,
-		electronRunAsNode: readElectronRunAsNode(),
 	},
 ): string[] {
 	const commandPrefix = resolveNodeCommandPrefix(context);
@@ -67,7 +66,6 @@ export function buildKanbanCommandParts(
 		execPath: process.execPath,
 		argv: process.argv,
 		execArgv: process.execArgv,
-		electronRunAsNode: readElectronRunAsNode(),
 	},
 ): string[] {
 	return [...resolveKanbanCommandParts(context), ...args];
