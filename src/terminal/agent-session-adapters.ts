@@ -2350,6 +2350,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	// Chat-view tasks never launch a PTY; the fallback keeps the Record exhaustive.
 	"claude-chat": claudeAdapter,
 	codex: codexAdapter,
+	"codex-chat": codexAdapter,
 	gemini: geminiAdapter,
 	opencode: opencodeAdapter,
 	droid: droidAdapter,

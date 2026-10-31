@@ -28,7 +28,7 @@ Session summaries/state machine feed the same board transitions (review/in_progr
 | Agent | Transport | Notes |
 |---|---|---|
 | Claude | **Implemented:** `@anthropic-ai/claude-agent-sdk` `query()` in streaming-input mode, one long-lived query per task (`src/claude-chat/`). Agent id `claude-chat` sits beside terminal `claude`. Uses `claude` from PATH (falls back to the SDK-bundled binary). `interrupt()` cancels a turn and keeps the session; the resulting `error_during_execution` result is swallowed. Resume via `resume`/`sessionId`. | Reducer shapes match the CLI stream-json. Approvals not yet wired: `canUseTool` could drive approve/deny cards; non-autonomous mode currently has no prompt UI. |
-| Codex | Check the Codex SDK first (not yet verified); otherwise `codex app-server` (JSON-RPC, experimental; `generate-ts` / `generate-json-schema` give typed protocol) — fallback `codex exec --json` per turn with `resume` | Protocol is marked experimental: pin version, generate types into repo. Approvals arrive as server requests. |
+| Codex | **Decided: `@openai/codex-sdk`** (`codex-chat`): one `codex exec` per turn, resume by thread id, full-item events (no token deltas). Implemented in `src/codex-chat/` on the shared `src/native-chat/` base. | No per-tool approval callback, so approvals would need `codex app-server`. Plan mode = read-only sandbox; autonomous = danger-full-access. |
 | Pi | `pi --mode rpc` (stdin/stdout JSON) | AGENTS.md currently forbids `--mode json` for task sessions (keeps the TUI + JSONL watcher). Native chat would be a distinct opt-in mode, not a replacement of the TUI path; can also start read-only by rendering the JSONL the watcher already parses. |
 
 ## Phases

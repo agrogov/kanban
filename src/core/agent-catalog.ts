@@ -74,6 +74,21 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		},
 	},
 	{
+		id: "codex-chat",
+		label: "OpenAI Codex (chat view)",
+		description: "OpenAI Codex in a native chat view: selectable text, normal context menu. No terminal.",
+		binary: "codex",
+		baseArgs: [],
+		autonomousArgs: ["--dangerously-bypass-approvals-and-sandbox"],
+		installUrl: "https://github.com/openai/codex",
+		capabilities: {
+			modelOverride: "flag",
+			effortOverride: "config",
+			providerOverride: "none",
+			docsUrl: "https://developers.openai.com/codex/cli/reference",
+		},
+	},
+	{
 		id: "cline",
 		label: "Cline",
 		description: "Built-in agent with support for any LLM provider. No CLI install needed.",
@@ -275,7 +290,7 @@ export function getRuntimeAgentCatalogEntry(agentId: RuntimeAgentId): RuntimeAge
 
 /** Agents rendered as a native chat panel and driven through a ClineTaskSessionService instead of a PTY. */
 export function isNativeChatAgentId(agentId: RuntimeAgentId | null | undefined): boolean {
-	return agentId === "cline" || agentId === "claude-chat";
+	return agentId === "cline" || agentId === "claude-chat" || agentId === "codex-chat";
 }
 
 /** Core Pi has no plan mode; other launch-supported CLIs do or emulate it. */

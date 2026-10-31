@@ -75,6 +75,7 @@ export const runtimeAgentIdSchema = z.enum([
 	"claude",
 	"claude-chat",
 	"codex",
+	"codex-chat",
 	"gemini",
 	"opencode",
 	"droid",

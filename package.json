@@ -95,6 +95,7 @@
     "@clinebot/core": "^0.0.38",
     "@clinebot/shared": "^0.0.38",
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "@openai/codex-sdk": "^0.166.0",
     "@sentry/node": "^10.45.0",
     "@trpc/client": "^11.11.0",
     "@trpc/server": "^11.11.0",

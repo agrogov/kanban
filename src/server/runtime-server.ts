@@ -4,14 +4,17 @@ import { createServer as createHttpsServer } from "node:https";
 import { join } from "node:path";
 
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
-import { createClaudeChatTaskSessionService } from "../claude-chat/claude-chat-task-session-service";
-import { createCompositeChatTaskSessionService } from "../claude-chat/composite-chat-task-session-service";
+import {
+	CLAUDE_CHAT_AGENT_ID,
+	createClaudeChatTaskSessionService,
+} from "../claude-chat/claude-chat-task-session-service";
 import { handleClineMcpOauthCallback } from "../cline-sdk/cline-mcp-runtime-service";
 import {
 	type ClineTaskSessionService,
 	createInMemoryClineTaskSessionService,
 } from "../cline-sdk/cline-task-session-service";
 import { createClineWatcherRegistry } from "../cline-sdk/cline-watcher-registry";
+import { CODEX_CHAT_AGENT_ID, createCodexChatTaskSessionService } from "../codex-chat/codex-chat-task-session-service";
 import type {
 	RuntimeCommandRunResponse,
 	RuntimeRunUpdateResponse,
@@ -26,6 +29,7 @@ import {
 	getKanbanRuntimeTls,
 	isKanbanRemoteHost,
 } from "../core/runtime-endpoint";
+import { createCompositeChatTaskSessionService } from "../native-chat/composite-chat-task-session-service";
 import {
 	checkRateLimit,
 	clearRateLimit,
@@ -156,7 +160,10 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				createInMemoryClineTaskSessionService({
 					watcherRegistry: clineWatcherRegistry,
 				}),
-				createClaudeChatTaskSessionService(),
+				[
+					{ agentId: CLAUDE_CHAT_AGENT_ID, service: createClaudeChatTaskSessionService() },
+					{ agentId: CODEX_CHAT_AGENT_ID, service: createCodexChatTaskSessionService() },
+				],
 			);
 			// Pre-warm the SDK session host in the background so the first card
 			// open or agent action does not pay the ClineCore.create cold-start

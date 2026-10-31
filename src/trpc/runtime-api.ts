@@ -216,21 +216,22 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						.catch(() => null);
 					if (persistedSession) {
 						useClinePath = true;
-						if (persistedSession.agentId === "claude-chat") {
-							effectiveAgentId = "claude-chat";
+						const persistedAgentId = persistedSession.agentId;
+						if (persistedAgentId && persistedAgentId !== "cline" && isNativeChatAgentId(persistedAgentId)) {
+							effectiveAgentId = persistedAgentId;
 						}
 					}
 				}
 
-				if (useClinePath && effectiveAgentId === "claude-chat") {
-					const claudeChatService = await deps.getScopedClineTaskSessionService(workspaceScope);
-					const summary = await claudeChatService.startTaskSession({
+				if (useClinePath && effectiveAgentId !== "cline" && isNativeChatAgentId(effectiveAgentId)) {
+					const chatService = await deps.getScopedClineTaskSessionService(workspaceScope);
+					const summary = await chatService.startTaskSession({
 						taskId: body.taskId,
 						cwd: taskCwd,
 						prompt: body.prompt,
 						images: body.images,
 						resumeFromTrash: body.resumeFromTrash,
-						agentId: "claude-chat",
+						agentId: effectiveAgentId,
 						autonomousModeEnabled: scopedRuntimeConfig.agentAutonomousModeEnabled,
 						startInPlanMode: body.startInPlanMode,
 						mode: requestedClineTaskMode,

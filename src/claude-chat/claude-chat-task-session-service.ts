@@ -3,32 +3,15 @@
 // the chat UI, state hub and auto-review reconciler already consume for Cline.
 
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { type Options, type Query, type SDKUserMessage, query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
-import { type ClineMessageRepository, InMemoryClineMessageRepository } from "../cline-sdk/cline-message-repository";
-import {
-	type ClineTaskMessage,
-	type ClineTaskSessionEntry,
-	cloneSummary,
-	createDefaultSummary,
-	createMessage,
-	now,
-	updateSummary,
-} from "../cline-sdk/cline-session-state";
-import { CLINE_BUILTIN_SLASH_COMMANDS } from "../cline-sdk/cline-slash-commands";
-import type { ClineSdkSlashCommand } from "../cline-sdk/sdk-runtime-boundary";
-import type {
-	RuntimeTaskImage,
-	RuntimeTaskSessionMode,
-	RuntimeTaskSessionSummary,
-	RuntimeTaskTurnCheckpoint,
-} from "../core/api-contract";
-import { getRuntimeHomePath } from "../state/workspace-state";
+import type { ClineMessageRepository } from "../cline-sdk/cline-message-repository";
+import { type ClineTaskSessionEntry, updateSummary } from "../cline-sdk/cline-session-state";
+import type { RuntimeTaskImage } from "../core/api-contract";
+import type { NativeChatBackend, StartNativeChatSessionRequest } from "../native-chat/chat-backend";
+import { NativeChatSessionService, toErrorMessage } from "../native-chat/native-chat-session-service";
 import { resolveBinaryOnPath } from "../terminal/command-discovery";
 import { AsyncMessageQueue } from "./async-message-queue";
 import {
-	type ClaudeInitInfo,
 	type ClaudeStreamReducerState,
 	createClaudeStreamReducerState,
 	reduceClaudeStreamEvent,
@@ -37,46 +20,8 @@ import {
 export const CLAUDE_CHAT_AGENT_ID = "claude-chat";
 const HOOK_SOURCE = "claude-chat";
 
-export interface StartClaudeChatSessionRequest {
-	taskId: string;
-	cwd: string;
-	prompt: string;
-	images?: RuntimeTaskImage[];
-	startInPlanMode?: boolean;
-	autonomousModeEnabled?: boolean;
-	resumeFromTrash?: boolean;
-	resumeFromPersistence?: boolean;
-	modelId?: string | null;
-	reasoningEffort?: string | null;
-	systemPrompt?: string | null;
-	mode?: RuntimeTaskSessionMode;
-}
-
-export interface ClaudeChatTaskSessionService {
-	onSummary(listener: (summary: RuntimeTaskSessionSummary) => void): () => void;
-	onMessage(listener: (taskId: string, message: ClineTaskMessage) => void): () => void;
-	startTaskSession(request: StartClaudeChatSessionRequest): Promise<RuntimeTaskSessionSummary>;
-	stopTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
-	abortTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
-	cancelTaskTurn(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
-	sendTaskSessionInput(
-		taskId: string,
-		text: string,
-		mode?: RuntimeTaskSessionMode,
-		images?: RuntimeTaskImage[],
-	): Promise<RuntimeTaskSessionSummary | null>;
-	reloadTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
-	clearTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
-	rebindPersistedTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null>;
-	getSummary(taskId: string): RuntimeTaskSessionSummary | null;
-	listSummaries(): RuntimeTaskSessionSummary[];
-	listMessages(taskId: string): ClineTaskMessage[];
-	listSlashCommands(): ClineSdkSlashCommand[];
-	loadTaskSessionMessages(taskId: string): Promise<ClineTaskMessage[]>;
-	applyTurnCheckpoint(taskId: string, checkpoint: RuntimeTaskTurnCheckpoint): RuntimeTaskSessionSummary | null;
-	hasTask(taskId: string): Promise<boolean>;
-	dispose(): Promise<void>;
-}
+export type StartClaudeChatSessionRequest = StartNativeChatSessionRequest;
+export type ClaudeChatTaskSessionService = NativeChatBackend;
 
 export type ClaudeChatQuery = (params: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Query;
 
@@ -86,17 +31,6 @@ export interface CreateClaudeChatTaskSessionServiceOptions {
 	stateDir?: string;
 	query?: ClaudeChatQuery;
 	messageRepository?: ClineMessageRepository;
-}
-
-interface PersistedClaudeChatSession {
-	sessionId: string;
-	cwd: string;
-	mode: RuntimeTaskSessionMode | null;
-	modelId: string | null;
-	reasoningEffort: string | null;
-	autonomousModeEnabled: boolean;
-	systemPrompt: string | null;
-	messages: ClineTaskMessage[];
 }
 
 interface LiveSession {
@@ -175,121 +109,36 @@ export function buildClaudeUserMessage(text: string, images?: RuntimeTaskImage[]
 	};
 }
 
-function toErrorMessage(error: unknown): string {
-	return error instanceof Error && error.message.trim() ? error.message.trim() : "Unknown error";
-}
-
-class ClaudeChatTaskSessionServiceImpl implements ClaudeChatTaskSessionService {
-	private readonly repository: ClineMessageRepository;
+class ClaudeChatTaskSessionServiceImpl extends NativeChatSessionService {
 	private readonly binary: string | null | undefined;
-	private readonly stateDir: string;
 	private readonly runQuery: ClaudeChatQuery;
 	private readonly live = new Map<string, LiveSession>();
-	private readonly settingsByTaskId = new Map<string, PersistedClaudeChatSession>();
-	private slashCommands: ClineSdkSlashCommand[] = [];
 
 	constructor(options: CreateClaudeChatTaskSessionServiceOptions) {
-		this.repository = options.messageRepository ?? new InMemoryClineMessageRepository();
+		super(
+			{ agentId: CLAUDE_CHAT_AGENT_ID, displayName: "Claude", hookSource: HOOK_SOURCE, stateDirName: "claude-chat" },
+			options,
+		);
 		this.binary = options.binary;
-		this.stateDir = options.stateDir ?? join(getRuntimeHomePath(), "claude-chat");
 		this.runQuery = options.query ?? sdkQuery;
 	}
 
-	onSummary(listener: (summary: RuntimeTaskSessionSummary) => void): () => void {
-		return this.repository.onSummary(listener);
+	protected createInitialSessionId(): string {
+		return randomUUID();
 	}
 
-	onMessage(listener: (taskId: string, message: ClineTaskMessage) => void): () => void {
-		return this.repository.onMessage(listener);
-	}
-
-	async startTaskSession(request: StartClaudeChatSessionRequest): Promise<RuntimeTaskSessionSummary> {
-		const existing = this.repository.getTaskEntry(request.taskId);
-		const hasPrompt = request.prompt.trim().length > 0 || (request.images?.length ?? 0) > 0;
-		if (
-			!request.resumeFromTrash &&
-			!request.resumeFromPersistence &&
-			existing &&
-			(existing.summary.state === "running" || existing.summary.state === "awaiting_review")
-		) {
-			return cloneSummary(existing.summary);
-		}
-
-		const persisted =
-			request.resumeFromTrash || request.resumeFromPersistence ? await this.readPersisted(request.taskId) : null;
-		const settings: PersistedClaudeChatSession = {
-			sessionId: persisted?.sessionId ?? randomUUID(),
-			cwd: request.cwd,
-			mode: request.startInPlanMode ? "plan" : (request.mode ?? "act"),
-			modelId: request.modelId?.trim() || null,
-			reasoningEffort: request.reasoningEffort?.trim() || null,
-			autonomousModeEnabled: request.autonomousModeEnabled === true,
-			systemPrompt: request.systemPrompt?.trim() || null,
-			messages: persisted?.messages ?? [],
-		};
-		this.settingsByTaskId.set(request.taskId, settings);
-
-		const entry: ClineTaskSessionEntry = {
-			summary: {
-				...createDefaultSummary(request.taskId),
-				agentId: CLAUDE_CHAT_AGENT_ID,
-				state: request.resumeFromTrash ? "awaiting_review" : hasPrompt ? "running" : "idle",
-				reviewReason: request.resumeFromTrash ? "attention" : null,
-				mode: settings.mode,
-				workspacePath: request.cwd,
-				startedAt: now(),
-				lastOutputAt: now(),
-				modelId: settings.modelId,
-				reasoningEffort: settings.reasoningEffort,
-			},
-			messages: settings.messages,
-			activeAssistantMessageId: null,
-			activeReasoningMessageId: null,
-			toolMessageIdByToolCallId: new Map(),
-			toolInputByToolCallId: new Map(),
-		};
-		this.repository.setTaskEntry(request.taskId, entry);
-		this.emitSummary(entry.summary);
-
-		if (hasPrompt) {
-			await this.deliver(request.taskId, entry, request.prompt, request.images, persisted !== null);
-		}
-		return cloneSummary(entry.summary);
-	}
-
-	async sendTaskSessionInput(
-		taskId: string,
-		text: string,
-		_mode?: RuntimeTaskSessionMode,
-		images?: RuntimeTaskImage[],
-	): Promise<RuntimeTaskSessionSummary | null> {
-		const entry = this.repository.getTaskEntry(taskId);
-		if (!entry || !this.settingsByTaskId.has(taskId)) {
-			return null;
-		}
-		await this.deliver(taskId, entry, text, images, true);
-		return cloneSummary(entry.summary);
-	}
-
-	private async deliver(
+	protected dispatch(
 		taskId: string,
 		entry: ClineTaskSessionEntry,
 		text: string,
 		images: RuntimeTaskImage[] | undefined,
 		canResume: boolean,
-	): Promise<void> {
-		const userMessage = createMessage(taskId, "user", text, images);
-		entry.messages.push(userMessage);
-		this.repository.emitMessage(taskId, userMessage);
-		this.emitSummary(
-			updateSummary(entry, { state: "running", reviewReason: null, lastOutputAt: now(), warningMessage: null }),
-		);
-		try {
-			const live = this.ensureSession(taskId, entry, canResume);
-			live.input.push(buildClaudeUserMessage(text, images));
-		} catch (error) {
-			this.reportFailure(taskId, entry, `could not start Claude: ${toErrorMessage(error)}`);
-		}
+	): void {
+		this.ensureSession(taskId, entry, canResume).input.push(buildClaudeUserMessage(text, images));
+	}
+
+	protected liveTaskIds(): string[] {
+		return [...this.live.keys()];
 	}
 
 	private ensureSession(taskId: string, entry: ClineTaskSessionEntry, canResume: boolean): LiveSession {
@@ -298,7 +147,7 @@ class ClaudeChatTaskSessionServiceImpl implements ClaudeChatTaskSessionService {
 			return existing;
 		}
 		const settings = this.settingsByTaskId.get(taskId);
-		if (!settings) {
+		if (!settings?.sessionId) {
 			throw new Error(`No Claude chat settings for task ${taskId}.`);
 		}
 		const hasHistory = canResume && entry.messages.some((message) => message.role === "assistant");
@@ -356,14 +205,11 @@ class ClaudeChatTaskSessionServiceImpl implements ClaudeChatTaskSessionService {
 
 	private handleMessage(taskId: string, entry: ClineTaskSessionEntry, live: LiveSession, event: unknown): void {
 		const reduction = reduceClaudeStreamEvent(taskId, entry, live.reducerState, event);
-		for (const message of reduction.changedMessages) {
-			this.repository.emitMessage(taskId, message);
-		}
-		if (reduction.changedMessages.length > 0) {
-			this.emitSummary(updateSummary(entry, { lastOutputAt: now() }));
-		}
+		this.emitMessages(taskId, entry, reduction.changedMessages);
 		if (reduction.init) {
-			this.applyInit(taskId, entry, reduction.init);
+			this.setSessionId(taskId, reduction.init.sessionId);
+			this.setSlashCommands([...reduction.init.slashCommands, ...reduction.init.skills]);
+			this.setModelId(entry, reduction.init.model);
 		}
 		if (reduction.turnResult) {
 			if (live.interruptPending && reduction.turnResult.isError) {
@@ -375,82 +221,7 @@ class ClaudeChatTaskSessionServiceImpl implements ClaudeChatTaskSessionService {
 		}
 	}
 
-	private applyInit(taskId: string, entry: ClineTaskSessionEntry, init: ClaudeInitInfo): void {
-		const settings = this.settingsByTaskId.get(taskId);
-		if (settings && init.sessionId) {
-			settings.sessionId = init.sessionId;
-		}
-		const names = [...new Set([...init.slashCommands, ...init.skills])];
-		if (names.length > 0) {
-			this.slashCommands = names.map((name) => ({ name, instructions: `/${name}` }));
-		}
-		if (init.model && entry.summary.modelId !== init.model) {
-			this.emitSummary(updateSummary(entry, { modelId: init.model }));
-		}
-	}
-
-	private completeTurn(
-		taskId: string,
-		entry: ClineTaskSessionEntry,
-		isError: boolean,
-		resultText: string | null,
-	): void {
-		if (isError) {
-			const message = resultText?.trim() || "Claude reported an error.";
-			const systemMessage = createMessage(taskId, "system", `Claude failed: ${message}`);
-			entry.messages.push(systemMessage);
-			this.repository.emitMessage(taskId, systemMessage);
-		}
-		this.emitSummary(
-			updateSummary(entry, {
-				state: "awaiting_review",
-				reviewReason: isError ? "error" : "hook",
-				lastOutputAt: now(),
-				lastHookAt: now(),
-				warningMessage: isError ? (resultText?.trim() ?? null) : null,
-				latestHookActivity: {
-					activityText: isError ? "Turn failed" : "Turn complete",
-					toolName: null,
-					toolInputSummary: null,
-					finalMessage: resultText,
-					hookEventName: isError ? "agent_error" : "Stop",
-					notificationType: null,
-					source: HOOK_SOURCE,
-				},
-			}),
-		);
-		void this.persist(taskId);
-	}
-
-	private reportFailure(taskId: string, entry: ClineTaskSessionEntry, message: string): void {
-		const systemMessage = createMessage(
-			taskId,
-			"system",
-			`Claude failed: ${message}. You can send another message to continue the conversation.`,
-		);
-		entry.messages.push(systemMessage);
-		this.repository.emitMessage(taskId, systemMessage);
-		this.emitSummary(
-			updateSummary(entry, {
-				state: "awaiting_review",
-				reviewReason: "error",
-				lastOutputAt: now(),
-				lastHookAt: now(),
-				warningMessage: message,
-				latestHookActivity: {
-					activityText: `Failed: ${message}`,
-					toolName: null,
-					toolInputSummary: null,
-					finalMessage: message,
-					hookEventName: "agent_error",
-					notificationType: null,
-					source: HOOK_SOURCE,
-				},
-			}),
-		);
-	}
-
-	private terminate(taskId: string): void {
+	protected terminate(taskId: string): void {
 		const live = this.live.get(taskId);
 		if (!live) {
 			return;
@@ -461,265 +232,18 @@ class ClaudeChatTaskSessionServiceImpl implements ClaudeChatTaskSessionService {
 		live.query.close();
 	}
 
-	async cancelTaskTurn(taskId: string): Promise<RuntimeTaskSessionSummary | null> {
-		const entry = this.repository.getTaskEntry(taskId);
-		if (!entry || entry.summary.state !== "running") {
-			return null;
-		}
+	protected async interruptTurn(taskId: string): Promise<void> {
 		const live = this.live.get(taskId);
-		if (live) {
-			// interrupt() keeps the query (and its session) alive for the next message.
-			live.interruptPending = true;
-			try {
-				await live.query.interrupt();
-			} catch {
-				live.interruptPending = false;
-				this.terminate(taskId);
-			}
-		}
-		entry.activeAssistantMessageId = null;
-		entry.activeReasoningMessageId = null;
-		const summary = updateSummary(entry, {
-			state: "idle",
-			reviewReason: null,
-			exitCode: null,
-			pid: null,
-			lastOutputAt: now(),
-			lastHookAt: now(),
-			latestHookActivity: {
-				activityText: "Turn canceled",
-				toolName: null,
-				toolInputSummary: null,
-				finalMessage: null,
-				hookEventName: "turn_canceled",
-				notificationType: null,
-				source: HOOK_SOURCE,
-			},
-		});
-		this.emitSummary(summary);
-		void this.persist(taskId);
-		return summary;
-	}
-
-	async stopTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null> {
-		const entry = await this.entryOrRebind(taskId);
-		if (!entry) {
-			return null;
-		}
-		this.terminate(taskId);
-		await this.persist(taskId);
-		if (entry.summary.state === "idle") {
-			return cloneSummary(entry.summary);
-		}
-		const summary = updateSummary(entry, {
-			state: "interrupted",
-			reviewReason: "interrupted",
-			exitCode: null,
-			pid: null,
-			lastOutputAt: now(),
-		});
-		this.emitSummary(summary);
-		return summary;
-	}
-
-	async abortTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null> {
-		return await this.stopTaskSession(taskId);
-	}
-
-	async reloadTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null> {
-		const entry = await this.entryOrRebind(taskId);
-		if (!entry) {
-			return null;
-		}
-		this.terminate(taskId);
-		return this.emitAndReturn(
-			updateSummary(entry, { state: "awaiting_review", reviewReason: "attention", pid: null }),
-		);
-	}
-
-	async clearTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null> {
-		const existing = this.repository.getTaskEntry(taskId);
-		const previous = this.settingsByTaskId.get(taskId);
-		this.terminate(taskId);
-		await rm(this.sessionFilePath(taskId), { force: true }).catch(() => undefined);
-		this.repository.clearHydratedTaskMessages(taskId);
-		if (!existing) {
-			return null;
-		}
-		const cleared: ClineTaskSessionEntry = {
-			summary: {
-				...createDefaultSummary(taskId),
-				agentId: CLAUDE_CHAT_AGENT_ID,
-				mode: existing.summary.mode,
-				workspacePath: existing.summary.workspacePath,
-			},
-			messages: [],
-			activeAssistantMessageId: null,
-			activeReasoningMessageId: null,
-			toolMessageIdByToolCallId: new Map(),
-			toolInputByToolCallId: new Map(),
-		};
-		// A fresh session id keeps the cleared conversation out of --resume.
-		this.settingsByTaskId.set(taskId, {
-			sessionId: randomUUID(),
-			cwd: existing.summary.workspacePath ?? previous?.cwd ?? ".",
-			mode: existing.summary.mode ?? null,
-			modelId: previous?.modelId ?? existing.summary.modelId,
-			reasoningEffort: previous?.reasoningEffort ?? existing.summary.reasoningEffort,
-			autonomousModeEnabled: previous?.autonomousModeEnabled ?? false,
-			systemPrompt: previous?.systemPrompt ?? null,
-			messages: [],
-		});
-		this.repository.setTaskEntry(taskId, cleared);
-		return this.emitAndReturn(cleared.summary);
-	}
-
-	async rebindPersistedTaskSession(taskId: string): Promise<RuntimeTaskSessionSummary | null> {
-		if (this.repository.getTaskEntry(taskId)) {
-			return this.repository.getSummary(taskId);
-		}
-		const persisted = await this.readPersisted(taskId);
-		if (!persisted) {
-			return null;
-		}
-		this.settingsByTaskId.set(taskId, persisted);
-		const entry: ClineTaskSessionEntry = {
-			summary: {
-				...createDefaultSummary(taskId),
-				agentId: CLAUDE_CHAT_AGENT_ID,
-				state: "awaiting_review",
-				reviewReason: "attention",
-				mode: persisted.mode,
-				workspacePath: persisted.cwd,
-				startedAt: now(),
-				lastOutputAt: now(),
-				modelId: persisted.modelId,
-				reasoningEffort: persisted.reasoningEffort,
-			},
-			messages: persisted.messages,
-			activeAssistantMessageId: null,
-			activeReasoningMessageId: null,
-			toolMessageIdByToolCallId: new Map(),
-			toolInputByToolCallId: new Map(),
-		};
-		this.repository.setTaskEntry(taskId, entry);
-		return this.emitAndReturn(entry.summary);
-	}
-
-	getSummary(taskId: string): RuntimeTaskSessionSummary | null {
-		return this.repository.getSummary(taskId);
-	}
-
-	listSummaries(): RuntimeTaskSessionSummary[] {
-		return this.repository.listSummaries();
-	}
-
-	listMessages(taskId: string): ClineTaskMessage[] {
-		return this.repository.listMessages(taskId);
-	}
-
-	listSlashCommands(): ClineSdkSlashCommand[] {
-		const builtins = CLINE_BUILTIN_SLASH_COMMANDS.map((command) => ({
-			name: command.name,
-			instructions: `/${command.name}`,
-			description: command.description,
-		}));
-		const reserved = new Set(builtins.map((command) => command.name));
-		return [...builtins, ...this.slashCommands.filter((command) => !reserved.has(command.name))];
-	}
-
-	async loadTaskSessionMessages(taskId: string): Promise<ClineTaskMessage[]> {
-		const live = this.repository.getTaskEntry(taskId);
-		if (live) {
-			return this.repository.listMessages(taskId);
-		}
-		return (await this.readPersisted(taskId))?.messages ?? [];
-	}
-
-	applyTurnCheckpoint(taskId: string, checkpoint: RuntimeTaskTurnCheckpoint): RuntimeTaskSessionSummary | null {
-		const summary = this.repository.applyTurnCheckpoint(taskId, checkpoint);
-		if (summary) {
-			this.repository.emitSummary(summary);
-		}
-		return summary;
-	}
-
-	async hasTask(taskId: string): Promise<boolean> {
-		if (this.repository.getTaskEntry(taskId)) {
-			return true;
-		}
-		return (await this.readPersisted(taskId)) !== null;
-	}
-
-	async dispose(): Promise<void> {
-		const taskIds = [...this.live.keys()];
-		for (const taskId of taskIds) {
-			this.terminate(taskId);
-		}
-		await Promise.all(taskIds.map((taskId) => this.persist(taskId)));
-		this.repository.dispose();
-	}
-
-	private async entryOrRebind(taskId: string): Promise<ClineTaskSessionEntry | null> {
-		if (!this.repository.getTaskEntry(taskId) && !(await this.rebindPersistedTaskSession(taskId))) {
-			return null;
-		}
-		return this.repository.getTaskEntry(taskId);
-	}
-
-	private emitSummary(summary: RuntimeTaskSessionSummary): void {
-		this.repository.emitSummary(summary);
-	}
-
-	private emitAndReturn(summary: RuntimeTaskSessionSummary): RuntimeTaskSessionSummary {
-		this.repository.emitSummary(summary);
-		return summary;
-	}
-
-	private sessionFilePath(taskId: string): string {
-		return join(this.stateDir, `${taskId.replace(/[^a-zA-Z0-9._-]/g, "_")}.json`);
-	}
-
-	private async persist(taskId: string): Promise<void> {
-		const entry = this.repository.getTaskEntry(taskId);
-		const settings = this.settingsByTaskId.get(taskId);
-		if (!entry || !settings) {
+		if (!live) {
 			return;
 		}
-		const payload: PersistedClaudeChatSession = { ...settings, messages: entry.messages };
-		const path = this.sessionFilePath(taskId);
+		// interrupt() keeps the query (and its session) alive for the next message.
+		live.interruptPending = true;
 		try {
-			await mkdir(this.stateDir, { recursive: true });
-			const tmpPath = `${path}.${process.pid}.tmp`;
-			await writeFile(tmpPath, JSON.stringify(payload), { mode: 0o600 });
-			await rename(tmpPath, path);
+			await live.query.interrupt();
 		} catch {
-			// Best effort: the conversation also lives in Claude's own session store.
-		}
-	}
-
-	private async readPersisted(taskId: string): Promise<PersistedClaudeChatSession | null> {
-		try {
-			const parsed: unknown = JSON.parse(await readFile(this.sessionFilePath(taskId), "utf8"));
-			if (typeof parsed !== "object" || parsed === null) {
-				return null;
-			}
-			const record = parsed as Partial<PersistedClaudeChatSession>;
-			if (typeof record.sessionId !== "string" || typeof record.cwd !== "string") {
-				return null;
-			}
-			return {
-				sessionId: record.sessionId,
-				cwd: record.cwd,
-				mode: record.mode ?? null,
-				modelId: record.modelId ?? null,
-				reasoningEffort: record.reasoningEffort ?? null,
-				autonomousModeEnabled: record.autonomousModeEnabled === true,
-				systemPrompt: record.systemPrompt ?? null,
-				messages: Array.isArray(record.messages) ? record.messages : [],
-			};
-		} catch {
-			return null;
+			live.interruptPending = false;
+			this.terminate(taskId);
 		}
 	}
 }

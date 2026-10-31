@@ -43,7 +43,7 @@ function getWindowsExecutableCandidates(binary: string): string[] {
 // unavailable for task-agent startup. That keeps behavior predictable and aligned with the
 // environment the Kanban process already has, instead of silently relying on hidden shell
 // side effects.
-export function resolveBinaryOnPath(binary: string): string | null {
+export function resolveBinaryOnPath(binary: string, options: { skipNodeModulesBin?: boolean } = {}): string | null {
 	const trimmed = binary.trim();
 	if (!trimmed) {
 		return null;
@@ -52,7 +52,11 @@ export function resolveBinaryOnPath(binary: string): string | null {
 		return canAccessPath(trimmed) ? trimmed : null;
 	}
 
-	const pathEntries = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+	const pathEntries = (process.env.PATH ?? "")
+		.split(delimiter)
+		.filter(Boolean)
+		// `npm run` prepends node_modules/.bin, whose shims can shadow the user's own install.
+		.filter((entry) => !options.skipNodeModulesBin || !/[\\/]node_modules[\\/]\.bin$/.test(entry));
 	const candidates = process.platform === "win32" ? getWindowsExecutableCandidates(trimmed) : [trimmed];
 	for (const entry of pathEntries) {
 		for (const candidate of candidates) {
