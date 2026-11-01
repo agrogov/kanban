@@ -602,8 +602,10 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 						}
 						continue;
 					}
-				} else if (!workspace.terminalManager || !workspace.terminalManager.getSummary(card.id)) {
-					// No terminal session to deliver the prompt to.
+				} else if (!workspace.terminalManager || !workspace.terminalManager.hasActiveSession(card.id)) {
+					// No live terminal session to deliver the prompt to. Arming and then
+					// failing delivery would burn an attempt per cycle and eventually
+					// give up on a card whose agent simply has not been started yet.
 					continue;
 				}
 

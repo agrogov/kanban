@@ -1,7 +1,7 @@
 // Persists Kanban-owned runtime preferences on disk.
 // This module should store Kanban settings such as selected agents,
 // shortcuts, and prompt templates, not SDK-owned Cline secrets or OAuth data.
-import { readFile, rm } from "node:fs/promises";
+import { copyFile, readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { getRuntimeAgentCatalogEntry, isRuntimeAgentLaunchSupported } from "../core/agent-catalog";
@@ -349,11 +349,35 @@ function toRuntimeConfigState({
 	};
 }
 
+function isMissingFileError(error: unknown): boolean {
+	return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
+
+/**
+ * Read the config file, distinguishing "not written yet" from "unreadable".
+ * Returning `null` for a corrupt file made every writer merge onto defaults and
+ * overwrite it, silently discarding the user's settings.
+ */
 async function readRuntimeConfigFile<T>(configPath: string): Promise<T | null> {
+	let raw: string;
 	try {
-		const raw = await readFile(configPath, "utf8");
+		raw = await readFile(configPath, "utf8");
+	} catch (error) {
+		if (isMissingFileError(error)) {
+			return null;
+		}
+		throw error;
+	}
+	try {
 		return JSON.parse(raw) as T;
-	} catch {
+	} catch (error) {
+		// Preserve the unparseable file so the user can recover anything hand-edited,
+		// then let the caller rewrite a clean one instead of merging onto nothing.
+		const backupPath = `${configPath}.corrupt-${Date.now()}`;
+		await copyFile(configPath, backupPath).catch(() => undefined);
+		process.stderr.write(
+			`[kanban] Ignoring unreadable config file ${configPath} (${String(error)}). Backup: ${backupPath}\n`,
+		);
 		return null;
 	}
 }

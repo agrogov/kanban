@@ -53,6 +53,16 @@ import { resolveTaskCwd } from "../workspace/task-worktree";
 import { captureTaskTurnCheckpoint } from "../workspace/turn-checkpoints";
 import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router";
 
+/**
+ * A start request for a session that is already live is a no-op in both backends
+ * (they return the existing summary), so checkpoint capture must be skipped —
+ * otherwise the mid-turn worktree becomes "latest turn" and the real turn-start
+ * baseline is displaced (and later pruned).
+ */
+function isLiveSessionSummary(summary: { state: string } | null | undefined): boolean {
+	return summary?.state === "running" || summary?.state === "awaiting_review";
+}
+
 export interface CreateRuntimeApiDependencies {
 	getActiveWorkspaceId: () => string | null;
 	getActiveRuntimeConfig?: () => RuntimeConfigState;
@@ -264,6 +274,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					});
 					const clineTaskSessionService = await deps.getScopedClineTaskSessionService(workspaceScope);
 					const resolvedClineTitle = resolveTaskTitle(body.taskTitle?.trim(), body.prompt);
+					const previousClineSummary = clineTaskSessionService.getSummary(body.taskId);
 					const summary = await clineTaskSessionService.startTaskSession({
 						taskId: body.taskId,
 						cwd: taskCwd,
@@ -282,7 +293,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					});
 
 					let nextSummary = summary;
-					if (shouldCaptureTurnCheckpoint) {
+					if (shouldCaptureTurnCheckpoint && !isLiveSessionSummary(previousClineSummary)) {
 						try {
 							const nextTurn = (summary.latestTurnCheckpoint?.turn ?? 0) + 1;
 							const checkpoint = await captureTaskTurnCheckpoint({
@@ -314,6 +325,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						error: "No runnable agent command is configured. Open Settings, install a supported CLI, and select it.",
 					};
 				}
+				const previousTerminalSummary = terminalManager.getSummary(body.taskId);
 				const summary = await terminalManager.startTaskSession({
 					taskId: body.taskId,
 					agentId: resolved.agentId,
@@ -332,7 +344,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				});
 
 				let nextSummary = summary;
-				if (shouldCaptureTurnCheckpoint) {
+				if (shouldCaptureTurnCheckpoint && !isLiveSessionSummary(previousTerminalSummary)) {
 					try {
 						const nextTurn = (summary.latestTurnCheckpoint?.turn ?? 0) + 1;
 						const checkpoint = await captureTaskTurnCheckpoint({

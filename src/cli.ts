@@ -229,12 +229,22 @@ async function assertPathIsDirectory(path: string): Promise<void> {
 	}
 }
 
+/**
+ * Liveness probe for a tracked project. Only a definitively missing path reports
+ * `false`: the caller (`resolveWorkspaceForStream`) permanently removes the
+ * project and deletes its board state on `false`, so a transient error (EACCES,
+ * EIO on a network mount, an unmounted volume) must never be read as "gone".
+ */
 async function pathIsDirectory(path: string): Promise<boolean> {
 	try {
 		const info = await stat(path);
 		return info.isDirectory();
-	} catch {
-		return false;
+	} catch (error) {
+		const code = typeof error === "object" && error !== null && "code" in error ? error.code : null;
+		if (code === "ENOENT" || code === "ENOTDIR") {
+			return false;
+		}
+		return true;
 	}
 }
 
@@ -245,6 +255,11 @@ function hasGitRepository(path: string): boolean {
 		stdio: ["ignore", "pipe", "ignore"],
 		env: createGitProcessEnv(),
 	});
+	if (result.error) {
+		// git could not be executed at all (PATH/ENOMEM/EAGAIN): unknown, so keep the
+		// project rather than removing it and destroying its board state.
+		return true;
+	}
 	return result.status === 0 && result.stdout.trim() === "true";
 }
 
@@ -624,6 +639,14 @@ async function startServerWithAutoPortRetry(
 	}
 }
 
+/**
+ * Set once this process owns a live runtime server. Command-style invocations
+ * (`kanban restart <pid>` on a foreground instance) start the server from inside
+ * a command handler and then return; without this flag `run()` would proceed to
+ * `process.exit()` and tear down the server it just started.
+ */
+let ownsRuntimeServer = false;
+
 async function runMainCommand(options: RuntimeRunOptions, shouldAutoOpenBrowser: boolean): Promise<void> {
 	if (options.host) {
 		setKanbanRuntimeHost(options.host);
@@ -677,6 +700,7 @@ async function runMainCommand(options: RuntimeRunOptions, shouldAutoOpenBrowser:
 		}
 		throw error;
 	}
+	ownsRuntimeServer = true;
 	console.log(`Cline Kanban running at ${runtime.url}`);
 	const managedRecord: ManagedProcessRecord = {
 		pid: process.pid,
@@ -1182,7 +1206,9 @@ async function run(): Promise<void> {
 	const program = createProgram(argv);
 	await program.parseAsync(argv, { from: "user" });
 	const isDaemonChild = argv.includes("--__daemon-child");
-	if (!shouldAutoOpenBrowserTabForInvocation(argv) && !isDaemonChild) {
+	// A command handler may have started a runtime server in this process (foreground
+	// restart); exiting here would kill it immediately after it bound its port.
+	if (!shouldAutoOpenBrowserTabForInvocation(argv) && !isDaemonChild && !ownsRuntimeServer) {
 		await Promise.allSettled([disposeCliTelemetryService(), flushNodeTelemetry()]);
 		// process.stdout is asynchronous when it points at a pipe. Calling
 		// process.exit() before the write queue drains truncates the output at

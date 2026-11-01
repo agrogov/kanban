@@ -420,6 +420,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/existing-worktree");
 
 		const terminalManager = {
+			getSummary: vi.fn(() => null),
 			startTaskSession: vi.fn(async () => createSummary()),
 			applyTurnCheckpoint: vi.fn(),
 		};
@@ -467,6 +468,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			.mockResolvedValueOnce("/tmp/new-worktree");
 
 		const terminalManager = {
+			getSummary: vi.fn(() => null),
 			startTaskSession: vi.fn(async () => createSummary()),
 			applyTurnCheckpoint: vi.fn(),
 		};
@@ -518,6 +520,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		});
 
 		const terminalManager = {
+			getSummary: vi.fn(() => null),
 			startTaskSession: vi.fn(async () => createSummary()),
 			applyTurnCheckpoint: vi.fn(),
 		};
@@ -591,6 +594,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		});
 
 		const terminalManager = {
+			getSummary: vi.fn(() => null),
 			startTaskSession: vi.fn(async () => createSummary()),
 			applyTurnCheckpoint: vi.fn(),
 		};
@@ -650,6 +654,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		});
 
 		const terminalManager = {
+			getSummary: vi.fn(() => null),
 			startTaskSession: vi.fn(async () => createSummary()),
 			applyTurnCheckpoint: vi.fn(),
 		};
@@ -898,7 +903,8 @@ describe("createRuntimeApi startTaskSession", () => {
 			}),
 			setActiveRuntimeConfig: vi.fn(),
 			getScopedTerminalManager: vi.fn(
-				async () => ({ startTaskSession: vi.fn(), applyTurnCheckpoint: vi.fn() }) as never,
+				async () =>
+					({ getSummary: vi.fn(() => null), startTaskSession: vi.fn(), applyTurnCheckpoint: vi.fn() }) as never,
 			),
 			getScopedClineTaskSessionService: vi.fn(async () => clineTaskSessionService as never),
 			resolveInteractiveShellCommand: vi.fn(),
@@ -937,6 +943,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		});
 
 		const terminalManager = {
+			getSummary: vi.fn(() => null),
 			startTaskSession: vi.fn(async () => createSummary()),
 			applyTurnCheckpoint: vi.fn(),
 		};
@@ -985,6 +992,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		});
 
 		const terminalManager = {
+			getSummary: vi.fn(() => null),
 			startTaskSession: vi.fn(async () => createSummary()),
 			applyTurnCheckpoint: vi.fn(),
 		};
@@ -1029,6 +1037,7 @@ describe("createRuntimeApi startTaskSession", () => {
 	it("starts home agent sessions in the workspace root without resolving a task worktree", async () => {
 		const homeTaskId = "__home_agent__:workspace-1:codex";
 		const terminalManager = {
+			getSummary: vi.fn(() => null),
 			startTaskSession: vi.fn(async () => createSummary({ taskId: homeTaskId })),
 			applyTurnCheckpoint: vi.fn(),
 		};
@@ -1077,6 +1086,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		});
 
 		const terminalManager = {
+			getSummary: vi.fn(() => null),
 			startTaskSession: vi.fn(async () => createSummary({ agentId: "codex" })),
 			applyTurnCheckpoint: vi.fn(),
 		};
@@ -1138,6 +1148,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		});
 
 		const terminalManager = {
+			getSummary: vi.fn(() => null),
 			startTaskSession: vi.fn(async () => createSummary({ agentId: "cline-cli" })),
 			applyTurnCheckpoint: vi.fn(),
 		};
@@ -1192,6 +1203,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		);
 
 		const terminalManager = {
+			getSummary: vi.fn(() => null),
 			startTaskSession: vi.fn(async () => createSummary({ agentId: "codex" })),
 			applyTurnCheckpoint: vi.fn(),
 		};
@@ -1248,6 +1260,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		agentRegistryMocks.resolveAgentCommand.mockReturnValue(null);
 
 		const terminalManager = {
+			getSummary: vi.fn(() => null),
 			startTaskSession: vi.fn(async () => createSummary()),
 			applyTurnCheckpoint: vi.fn(),
 		};
@@ -1325,6 +1338,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		agentRegistryMocks.resolveAgentCommand.mockReturnValue(null);
 
 		const terminalManager = {
+			getSummary: vi.fn(() => null),
 			startTaskSession: vi.fn(async () => createSummary()),
 			applyTurnCheckpoint: vi.fn(),
 		};

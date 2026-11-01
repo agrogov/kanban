@@ -8,7 +8,14 @@ import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../../core/api-c
 const CODEX_LOG_POLL_INTERVAL_MS = 200;
 const CODEX_ROLLOUT_POLL_INTERVAL_MS = 1000;
 const MAX_CODEX_ROLLOUT_FILES_TO_SCAN = 250;
-const CODEX_ROLLOUT_FILE_FRESH_WINDOW_MS = 10 * 60 * 1000;
+/**
+ * Only files created/modified at or after the watcher started belong to this
+ * session. A wider window let a rollout from any other Codex run in the same cwd
+ * be adopted (its tail is then replayed as this task's events), and the path is
+ * latched, so the real rollout was never read. The small allowance covers clock
+ * skew between the watcher start and the file's first write.
+ */
+const CODEX_ROLLOUT_FILE_CLOCK_SKEW_ALLOWANCE_MS = 2_000;
 const CODEX_ROLLOUT_MATCH_SCAN_BYTES = 256 * 1024;
 const CODEX_ROLLOUT_TAIL_SCAN_BYTES = 2 * 1024 * 1024;
 const CODEX_ROLLOUT_INITIAL_BACKLOG_BYTES = 256 * 1024;
@@ -335,7 +342,7 @@ async function findCodexRolloutFileForCwd(
 		let fileStat: Stats;
 		try {
 			fileStat = await stat(filePath);
-			if (fileStat.mtimeMs < sessionStartedAtMs - CODEX_ROLLOUT_FILE_FRESH_WINDOW_MS) {
+			if (fileStat.mtimeMs < sessionStartedAtMs - CODEX_ROLLOUT_FILE_CLOCK_SKEW_ALLOWANCE_MS) {
 				continue;
 			}
 		} catch {

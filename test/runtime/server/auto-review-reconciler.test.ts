@@ -99,14 +99,21 @@ function createFakeTerminalManager() {
 		unavailableTaskIds.has(taskId) ? null : ({ taskId } as unknown as RuntimeTaskSessionSummary),
 	);
 	const stopTaskSession = vi.fn((_taskId: string) => null);
+	const hasActiveSession = vi.fn((taskId: string) => !unavailableTaskIds.has(taskId));
 	return {
 		writeInput,
 		getSummary,
+		hasActiveSession,
 		stopTaskSession,
 		dropSession: (taskId: string) => {
 			unavailableTaskIds.add(taskId);
 		},
-		manager: { writeInput, getSummary, stopTaskSession } as unknown as TerminalSessionManager,
+		manager: {
+			writeInput,
+			getSummary,
+			hasActiveSession,
+			stopTaskSession,
+		} as unknown as TerminalSessionManager,
 	};
 }
 

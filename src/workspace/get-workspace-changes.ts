@@ -209,75 +209,66 @@ function fallbackStats(oldText: string | null, newText: string | null): DiffStat
 	};
 }
 
-async function readDiffStat(repoRoot: string, path: string): Promise<DiffStat | null> {
+interface DiffStatPathspec {
+	path: string;
+	previousPath?: string | null;
+}
+
+function parseNumstatLine(output: string): DiffStat | null {
+	const firstLine = output
+		.split("\n")
+		.map((line) => line.trim())
+		.find(Boolean);
+	if (!firstLine) {
+		return null;
+	}
+	const [addedRaw, deletedRaw] = firstLine.split("\t");
+	const additions = Number.parseInt(addedRaw ?? "", 10);
+	const deletions = Number.parseInt(deletedRaw ?? "", 10);
+	return {
+		additions: Number.isFinite(additions) ? additions : 0,
+		deletions: Number.isFinite(deletions) ? deletions : 0,
+	};
+}
+
+/**
+ * Rename detection makes `git diff --numstat` report the pair as one row on the
+ * source path. Restricting the pathspec to the destination alone drops the
+ * rename pairing, and git then reports the whole file as added — so both sides
+ * of a rename must be passed whenever they differ.
+ */
+async function readNumstat(repoRoot: string, diffArgs: string[], pathspec: DiffStatPathspec): Promise<DiffStat | null> {
+	const paths =
+		pathspec.previousPath && pathspec.previousPath !== pathspec.path
+			? [pathspec.previousPath, pathspec.path]
+			: [pathspec.path];
 	try {
-		const output = await getGitStdout(["diff", "--numstat", "HEAD", "--", path], repoRoot);
-		const firstLine = output
-			.split("\n")
-			.map((line) => line.trim())
-			.find(Boolean);
-		if (!firstLine) {
-			return null;
-		}
-		const [addedRaw, deletedRaw] = firstLine.split("\t");
-		const additions = Number.parseInt(addedRaw ?? "", 10);
-		const deletions = Number.parseInt(deletedRaw ?? "", 10);
-		return {
-			additions: Number.isFinite(additions) ? additions : 0,
-			deletions: Number.isFinite(deletions) ? deletions : 0,
-		};
+		const output = await getGitStdout([...diffArgs, "--", ...paths], repoRoot);
+		return parseNumstatLine(output);
 	} catch {
 		return null;
 	}
+}
+
+async function readDiffStat(repoRoot: string, pathspec: DiffStatPathspec): Promise<DiffStat | null> {
+	return await readNumstat(repoRoot, ["diff", "--numstat", "HEAD"], pathspec);
 }
 
 async function readDiffStatBetweenRefs(
 	repoRoot: string,
 	fromRef: string,
 	toRef: string,
-	path: string,
+	pathspec: DiffStatPathspec,
 ): Promise<DiffStat | null> {
-	try {
-		const output = await getGitStdout(["diff", "--numstat", fromRef, toRef, "--", path], repoRoot);
-		const firstLine = output
-			.split("\n")
-			.map((line) => line.trim())
-			.find(Boolean);
-		if (!firstLine) {
-			return null;
-		}
-		const [addedRaw, deletedRaw] = firstLine.split("\t");
-		const additions = Number.parseInt(addedRaw ?? "", 10);
-		const deletions = Number.parseInt(deletedRaw ?? "", 10);
-		return {
-			additions: Number.isFinite(additions) ? additions : 0,
-			deletions: Number.isFinite(deletions) ? deletions : 0,
-		};
-	} catch {
-		return null;
-	}
+	return await readNumstat(repoRoot, ["diff", "--numstat", fromRef, toRef], pathspec);
 }
 
-async function readDiffStatFromRef(repoRoot: string, fromRef: string, path: string): Promise<DiffStat | null> {
-	try {
-		const output = await getGitStdout(["diff", "--numstat", fromRef, "--", path], repoRoot);
-		const firstLine = output
-			.split("\n")
-			.map((line) => line.trim())
-			.find(Boolean);
-		if (!firstLine) {
-			return null;
-		}
-		const [addedRaw, deletedRaw] = firstLine.split("\t");
-		const additions = Number.parseInt(addedRaw ?? "", 10);
-		const deletions = Number.parseInt(deletedRaw ?? "", 10);
-		return {
-			additions: Number.isFinite(additions) ? additions : 0,
-			deletions: Number.isFinite(deletions) ? deletions : 0,
-		};
-	} catch {
-		return null;
-	}
+async function readDiffStatFromRef(
+	repoRoot: string,
+	fromRef: string,
+	pathspec: DiffStatPathspec,
+): Promise<DiffStat | null> {
+	return await readNumstat(repoRoot, ["diff", "--numstat", fromRef], pathspec);
 }
 
 async function buildFileChange(repoRoot: string, entry: NameStatusEntry): Promise<RuntimeWorkspaceFileChange> {
@@ -288,7 +279,7 @@ async function buildFileChange(repoRoot: string, entry: NameStatusEntry): Promis
 	const stats =
 		entry.status === "untracked"
 			? { additions: toLineCount(newText ?? ""), deletions: 0 }
-			: ((await readDiffStat(repoRoot, entry.path)) ?? fallbackStats(oldText, newText));
+			: ((await readDiffStat(repoRoot, entry)) ?? fallbackStats(oldText, newText));
 
 	return {
 		path: entry.path,
@@ -310,8 +301,7 @@ async function buildFileChangeBetweenRefs(
 	const basePath = entry.previousPath ?? entry.path;
 	const oldText = entry.status === "added" ? null : await readFileAtRef(repoRoot, fromRef, basePath);
 	const newText = entry.status === "deleted" ? null : await readFileAtRef(repoRoot, toRef, entry.path);
-	const stats =
-		(await readDiffStatBetweenRefs(repoRoot, fromRef, toRef, entry.path)) ?? fallbackStats(oldText, newText);
+	const stats = (await readDiffStatBetweenRefs(repoRoot, fromRef, toRef, entry)) ?? fallbackStats(oldText, newText);
 
 	return {
 		path: entry.path,
@@ -338,7 +328,7 @@ async function buildFileChangeFromRef(
 	const stats =
 		entry.status === "untracked"
 			? { additions: toLineCount(newText ?? ""), deletions: 0 }
-			: ((await readDiffStatFromRef(repoRoot, fromRef, entry.path)) ?? fallbackStats(oldText, newText));
+			: ((await readDiffStatFromRef(repoRoot, fromRef, entry)) ?? fallbackStats(oldText, newText));
 
 	return {
 		path: entry.path,

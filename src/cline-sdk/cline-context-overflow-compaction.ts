@@ -12,14 +12,15 @@ const CONTEXT_OVERFLOW_ERROR_PATTERNS = [
 	/context length exceeded/i,
 	/context length.*exceeds/i,
 	/maximum context length/i,
-	/\bcontext\s*(?:length|window)\b/i,
 	/\bcontext\s*(?:length|window)\b.*exceed/i,
-	/\bmaximum\s*context\b/i,
 	/context window.*(exceed|limit|too)/i,
 	/(exceed|exceeds|exceeded).*context window/i,
 	/input exceeds.*context window/i,
-	/too many tokens/i,
-	/\btoo\s*many\s*tokens?\b/i,
+	// Rate-limit and configuration errors legitimately mention tokens
+	// ("Too many tokens per minute"), so only treat them as overflow when they
+	// also assert that a limit was reached — otherwise history gets compacted
+	// (destructively) on retries where nothing overflowed.
+	/too\s*many\s*tokens?.*(?:\bmax(?:imum)?\b|\blimit\b|\bcontext\b)/i,
 	/\b(?:input\s*)?tokens?\s*exceed/i,
 	/maximum tokens.*exceeds.*model limit/i,
 	/input length and max_tokens exceed context limit/i,

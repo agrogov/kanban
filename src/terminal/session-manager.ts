@@ -78,6 +78,8 @@ interface SessionEntry {
 	suppressAutoRestartOnExit: boolean;
 	autoRestartTimestamps: number[];
 	pendingAutoRestart: Promise<void> | null;
+	/** In-flight start for this task; concurrent starts join it instead of forking a second PTY. */
+	pendingStart: Promise<RuntimeTaskSessionSummary> | null;
 }
 
 export interface StartTaskSessionRequest {
@@ -264,6 +266,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				suppressAutoRestartOnExit: false,
 				autoRestartTimestamps: [],
 				pendingAutoRestart: null,
+				pendingStart: null,
 			});
 		}
 	}
@@ -271,6 +274,14 @@ export class TerminalSessionManager implements TerminalSessionService {
 	getSummary(taskId: string): RuntimeTaskSessionSummary | null {
 		const entry = this.entries.get(taskId);
 		return entry ? cloneSummary(entry.summary) : null;
+	}
+
+	/**
+	 * Whether a live agent process is attached to this task. `getSummary` is not a
+	 * substitute: it returns the persisted summary for hydrated/dead entries too.
+	 */
+	hasActiveSession(taskId: string): boolean {
+		return this.entries.get(taskId)?.active != null;
 	}
 
 	listSummaries(): RuntimeTaskSessionSummary[] {
@@ -306,7 +317,28 @@ export class TerminalSessionManager implements TerminalSessionService {
 		};
 	}
 
-	async startTaskSession(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
+	/**
+	 * Starts (or resumes) the agent for a task. Concurrent calls for the same task
+	 * share one start: the liveness guard inside is checked before a long await, so
+	 * without this a second caller would spawn a second PTY and orphan both the
+	 * process and the tracking entry.
+	 */
+	startTaskSession(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
+		const entry = this.ensureEntry(request.taskId);
+		if (entry.pendingStart) {
+			return entry.pendingStart;
+		}
+		let pending: Promise<RuntimeTaskSessionSummary> | null = null;
+		pending = this.startTaskSessionInternal(request).finally(() => {
+			if (entry.pendingStart === pending) {
+				entry.pendingStart = null;
+			}
+		});
+		entry.pendingStart = pending;
+		return pending;
+	}
+
+	private async startTaskSessionInternal(request: StartTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
 		const entry = this.ensureEntry(request.taskId);
 		entry.restartRequest = {
 			kind: "task",
@@ -987,6 +1019,11 @@ export class TerminalSessionManager implements TerminalSessionService {
 			if (!entry.active) {
 				continue;
 			}
+			// The kill completes asynchronously, so the normal onExit path runs after
+			// this returns. Without suppressing it, `shouldAutoRestart` sees a live
+			// viewer plus a task restart request and respawns the agent — during server
+			// shutdown or after the workspace was already removed.
+			entry.suppressAutoRestartOnExit = true;
 			stopWorkspaceTrustTimers(entry.active);
 			entry.active.session.stop({ interrupted: true });
 		}
@@ -1025,6 +1062,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			suppressAutoRestartOnExit: false,
 			autoRestartTimestamps: [],
 			pendingAutoRestart: null,
+			pendingStart: null,
 		};
 		this.entries.set(taskId, created);
 		return created;
@@ -1061,6 +1099,12 @@ export class TerminalSessionManager implements TerminalSessionService {
 		let pendingAutoRestart: Promise<void> | null = null;
 		pendingAutoRestart = (async () => {
 			try {
+				// A stop-all that lands between the scheduling decision and this body
+				// must win; otherwise the agent is respawned after shutdown/removal.
+				if (entry.suppressAutoRestartOnExit) {
+					entry.suppressAutoRestartOnExit = false;
+					return;
+				}
 				await this.startTaskSession(cloneStartTaskSessionRequest(restartRequest.request));
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);

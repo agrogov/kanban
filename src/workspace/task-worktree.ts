@@ -264,8 +264,13 @@ function shouldSkipSymlink(relativePath: string): boolean {
 	return segments.some((segment) => SYMLINK_PATH_SEGMENT_BLACKLIST.has(segment));
 }
 
-function isPathWithinRoot(path: string, root: string): boolean {
-	return path === root || path.startsWith(`${root}/`);
+/**
+ * Relative-path containment check for git-porcelain output. Deliberately named
+ * differently from `path-sandbox.isPathWithinRoot(root, candidate)`, whose
+ * argument order is reversed — mixing the two silently inverts the test.
+ */
+function isRelativePathWithin(relativePath: string, root: string): boolean {
+	return relativePath === root || relativePath.startsWith(`${root}/`);
 }
 
 function getUniquePaths(relativePaths: string[]): string[] {
@@ -281,7 +286,7 @@ function getUniquePaths(relativePaths: string[]): string[] {
 
 	const roots: string[] = [];
 	for (const path of uniquePaths) {
-		if (roots.some((root) => isPathWithinRoot(path, root))) {
+		if (roots.some((root) => isRelativePathWithin(path, root))) {
 			continue;
 		}
 		roots.push(path);
@@ -683,15 +688,26 @@ export async function deleteTaskWorktree(options: {
 		}
 
 		await preserveTaskHeadCommit(taskId, worktreePath).catch(() => undefined);
+		const isGitWorktree = await pathExists(join(worktreePath, ".git"));
 		try {
 			await captureTaskPatch({
 				repoPath: options.repoPath,
 				taskId,
 				worktreePath,
 			});
-		} catch {
-			// Patch capture is best-effort. A corrupted or partially-created
-			// worktree (e.g. plain directory, no git init) should still be removed.
+		} catch (error) {
+			// A corrupted or partially-created worktree (plain directory, no git init)
+			// has nothing to preserve and should still be removed. A real worktree that
+			// failed to capture may hold uncommitted work, and the patch is the only
+			// way to restore it — so refuse to delete that instead of silently losing it.
+			if (isGitWorktree) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					ok: false,
+					removed: false,
+					error: `Could not preserve this task's uncommitted changes before deleting it: ${message}`,
+				};
+			}
 		}
 		const removed = await removeTaskWorktreeInternal(options.repoPath, worktreePath);
 		await pruneEmptyParents(rootPath, dirname(worktreePath));

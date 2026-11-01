@@ -50,7 +50,14 @@ function shouldFallbackToIndexHtml(pathname: string): boolean {
 
 export function normalizeRequestPath(urlPathname: string): string {
 	const trimmed = urlPathname === "/" ? "/index.html" : urlPathname;
-	return decodeURIComponent(trimmed.split("?")[0] ?? trimmed);
+	const pathOnly = trimmed.split("?")[0] ?? trimmed;
+	try {
+		return decodeURIComponent(pathOnly);
+	} catch {
+		// Malformed percent-encoding (e.g. "/%zz") must not throw: callers include
+		// websocket upgrade handlers where a throw escapes as an uncaught exception.
+		return pathOnly;
+	}
 }
 
 function resolveAssetPath(rootDir: string, urlPathname: string): string {

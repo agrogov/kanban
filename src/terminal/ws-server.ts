@@ -725,6 +725,13 @@ export function createTerminalWebSocketBridge({
 			previousIoSocket.close(1000, "Replaced by newer terminal stream.");
 		}
 
+		// `ws` emits 'error' for protocol violations (invalid UTF-8, bad opcode,
+		// oversized frame). Without a listener EventEmitter rethrows it, and the
+		// uncaught exception takes down the whole runtime server.
+		ws.on("error", () => {
+			ws.terminate();
+		});
+
 		ws.on("message", (rawMessage: RawData) => {
 			try {
 				const summary = terminalManager.writeInput(taskId, rawDataToBuffer(rawMessage));
@@ -784,6 +791,10 @@ export function createTerminalWebSocketBridge({
 		}
 
 		sendRestoreToViewer(viewerState, taskId, terminalManager, false);
+
+		ws.on("error", () => {
+			ws.terminate();
+		});
 
 		ws.on("message", (rawMessage: RawData) => {
 			const message = parseWebSocketPayload(rawMessage);

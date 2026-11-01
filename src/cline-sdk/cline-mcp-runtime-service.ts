@@ -488,7 +488,15 @@ class RuntimeMcpServerClient implements SdkMcpServerClient {
 				version: "1.0.0",
 			});
 
-			await client.connect(transport);
+			try {
+				await client.connect(transport);
+			} catch (error) {
+				// Stdio transports spawn the server process before the handshake, and
+				// SSE/HTTP open a socket; without closing, a failed connect orphans it
+				// (this.client is never set, so disconnect()/dispose() cannot reclaim it).
+				await client.close().catch(() => undefined);
+				throw error;
+			}
 			this.client = client;
 		});
 	}
@@ -651,6 +659,10 @@ export async function startOauthCallbackListener(timeoutMs: number): Promise<{
 			reject(error);
 		};
 	});
+	// A flow that is started but never awaited (setup failure, or a caller that
+	// gives up) would otherwise reject when the timeout fires, and an unobserved
+	// rejection terminates the runtime. Awaiting callers still see the rejection.
+	void codePromise.catch(() => undefined);
 
 	timeoutHandle = setTimeout(() => {
 		if (!pendingOauthCallbacksByRequestId.delete(requestId)) {
@@ -793,86 +805,93 @@ export function createClineMcpRuntimeService(
 				throw new Error(`MCP server "${serverName}" uses stdio transport and does not support OAuth browser flow.`);
 			}
 
-			const callbackListener = await startOauthCallbackListener(input.timeoutMs ?? DEFAULT_AUTH_TIMEOUT_MS);
-			const oauthContext = await createOauthProviderContext({
-				settingsPath: oauthSettingsPath,
-				serverName,
-				redirectUrl: callbackListener.redirectUrl,
-				onAuthorizationUrl: (url) => {
-					input.onAuthorizationUrl?.(url);
-				},
-			});
-
-			await oauthContext.resetInteractiveState();
-
-			const transport = createTransport({
-				server,
-				oauthProvider: oauthContext.provider,
-			});
-			if (!isAuthCapableTransport(transport)) {
-				await callbackListener.close();
-				throw new Error(`MCP server "${serverName}" transport does not support OAuth.`);
-			}
-
-			const client = new Client({
-				name: "kanban-mcp-oauth-client",
-				version: "1.0.0",
-			});
-			let retryClient: Client | null = null;
-
+			// The callback listener must be created inside the try whose finally closes
+			// it: provider-context setup and state resets can throw, and a listener that
+			// survives them keeps a pending flow and its timer alive for its whole TTL.
+			let callbackListener: Awaited<ReturnType<typeof startOauthCallbackListener>> | null = null;
 			try {
-				try {
-					await client.connect(transport);
-					await client.listTools();
-					await oauthContext.clearError();
-					return {
-						serverName,
-						authorized: true,
-						message: `MCP server "${serverName}" is already authorized.`,
-					};
-				} catch (error) {
-					if (!(error instanceof UnauthorizedError)) {
-						throw error;
-					}
+				callbackListener = await startOauthCallbackListener(input.timeoutMs ?? DEFAULT_AUTH_TIMEOUT_MS);
+				const listener = callbackListener;
+				const oauthContext = await createOauthProviderContext({
+					settingsPath: oauthSettingsPath,
+					serverName,
+					redirectUrl: listener.redirectUrl,
+					onAuthorizationUrl: (url) => {
+						input.onAuthorizationUrl?.(url);
+					},
+				});
 
-					const authUrl = oauthContext.getLastAuthorizationUrl();
-					if (!authUrl) {
-						throw new Error(`MCP server "${serverName}" did not provide an authorization URL.`);
-					}
+				await oauthContext.resetInteractiveState();
 
-					const authorizationCode = await callbackListener.awaitAuthorizationCode();
-					await transport.finishAuth(authorizationCode);
-					await broadcastAuthStatuses();
-
-					retryClient = new Client({
-						name: "kanban-mcp-oauth-client",
-						version: "1.0.0",
-					});
-					const retryTransport = createTransport({
-						server,
-						oauthProvider: oauthContext.provider,
-					});
-					if (!isAuthCapableTransport(retryTransport)) {
-						throw new Error(`MCP server "${serverName}" transport does not support OAuth.`);
-					}
-					await retryClient.connect(retryTransport);
-					await retryClient.listTools();
-					await oauthContext.clearError();
-					return {
-						serverName,
-						authorized: true,
-						message: `MCP server "${serverName}" OAuth authorization completed.`,
-					};
+				const transport = createTransport({
+					server,
+					oauthProvider: oauthContext.provider,
+				});
+				if (!isAuthCapableTransport(transport)) {
+					throw new Error(`MCP server "${serverName}" transport does not support OAuth.`);
 				}
-			} catch (error) {
-				const message = toErrorMessage(error);
-				await oauthContext.markError(message);
-				await broadcastAuthStatuses().catch(() => undefined);
-				throw new Error(message);
+
+				const client = new Client({
+					name: "kanban-mcp-oauth-client",
+					version: "1.0.0",
+				});
+				let retryClient: Client | null = null;
+
+				try {
+					try {
+						await client.connect(transport);
+						await client.listTools();
+						await oauthContext.clearError();
+						return {
+							serverName,
+							authorized: true,
+							message: `MCP server "${serverName}" is already authorized.`,
+						};
+					} catch (error) {
+						if (!(error instanceof UnauthorizedError)) {
+							throw error;
+						}
+
+						const authUrl = oauthContext.getLastAuthorizationUrl();
+						if (!authUrl) {
+							throw new Error(`MCP server "${serverName}" did not provide an authorization URL.`);
+						}
+
+						const authorizationCode = await listener.awaitAuthorizationCode();
+						await transport.finishAuth(authorizationCode);
+						await broadcastAuthStatuses();
+
+						retryClient = new Client({
+							name: "kanban-mcp-oauth-client",
+							version: "1.0.0",
+						});
+						const retryTransport = createTransport({
+							server,
+							oauthProvider: oauthContext.provider,
+						});
+						if (!isAuthCapableTransport(retryTransport)) {
+							throw new Error(`MCP server "${serverName}" transport does not support OAuth.`);
+						}
+						await retryClient.connect(retryTransport);
+						await retryClient.listTools();
+						await oauthContext.clearError();
+						return {
+							serverName,
+							authorized: true,
+							message: `MCP server "${serverName}" OAuth authorization completed.`,
+						};
+					}
+				} catch (error) {
+					const message = toErrorMessage(error);
+					await oauthContext.markError(message);
+					await broadcastAuthStatuses().catch(() => undefined);
+					throw new Error(message);
+				} finally {
+					await client.close().catch(() => undefined);
+					await retryClient?.close().catch(() => undefined);
+				}
 			} finally {
-				await client.close().catch(() => undefined);
-				await retryClient?.close().catch(() => undefined);
-				await callbackListener.close();
+				await callbackListener?.close();
 			}
 		},
 	};

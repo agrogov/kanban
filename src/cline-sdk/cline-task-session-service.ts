@@ -494,7 +494,11 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 					cwd: request.cwd,
 					prompt: runtimePrompt,
 					taskTitle: request.taskTitle,
-					initialMessages: persistedResumeSnapshot?.messages ?? request.initialMessages,
+					// A crash mid-tool-call leaves an unresolved tool_use in the persisted
+					// history, and seeding the SDK with it fails with "Tool result is missing".
+					initialMessages: persistedResumeSnapshot
+						? stripIncompleteToolTurns(persistedResumeSnapshot.messages)
+						: request.initialMessages,
 					images: request.images,
 					providerId,
 					modelId,

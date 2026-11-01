@@ -537,22 +537,65 @@ async function fetchLatestVersionFromRegistry(input: FetchLatestVersionInput): P
 	}
 }
 
+interface UpdateSpawnTarget {
+	file: string;
+	args: string[];
+}
+
+function quoteWindowsCmdArgument(argument: string): string {
+	if (argument.length === 0) {
+		return '""';
+	}
+	return /[\s"]/u.test(argument) ? `"${argument.replace(/"/g, '""')}"` : argument;
+}
+
+/**
+ * Node >= 18.20.2 / 20.12.2 (CVE-2024-27980) refuses to spawn `.cmd` shims
+ * without a shell and fails with EINVAL, so on Windows the npm/pnpm/yarn shim
+ * has to be launched through `cmd.exe` explicitly.
+ */
+export function resolveUpdateSpawnTarget(
+	command: string,
+	args: string[],
+	platform: NodeJS.Platform = process.platform,
+): UpdateSpawnTarget {
+	const resolvedCommand = resolveUpdateCommandForPlatform(command, platform);
+	if (resolvedCommand === command) {
+		return { file: command, args };
+	}
+	const commandProcessor = process.env.ComSpec?.trim() || "cmd.exe";
+	return {
+		file: commandProcessor,
+		args: ["/d", "/s", "/c", resolvedCommand, ...args.map(quoteWindowsCmdArgument)],
+	};
+}
+
 function spawnDetachedUpdate(command: string, args: string[]): void {
-	const child = spawn(resolveUpdateCommandForPlatform(command), args, {
+	const target = resolveUpdateSpawnTarget(command, args);
+	const child = spawn(target.file, target.args, {
 		detached: true,
 		stdio: "ignore",
 		env: process.env,
 		windowsHide: true,
 	});
+	// Spawn failures arrive asynchronously, after this function returned, so the
+	// caller's try/catch cannot see them; an unhandled 'error' would exit the runtime.
+	child.on("error", (error) => {
+		process.stderr.write(`[update] could not launch "${command}": ${error.message}\n`);
+	});
 	child.unref();
 }
 
 function runUpdateCommandSync(command: string, args: string[]): number {
-	const result = spawnSync(resolveUpdateCommandForPlatform(command), args, {
+	const target = resolveUpdateSpawnTarget(command, args);
+	const result = spawnSync(target.file, target.args, {
 		env: process.env,
 		stdio: "inherit",
 		windowsHide: true,
 	});
+	if (result.error) {
+		process.stderr.write(`[update] could not run "${command}": ${result.error.message}\n`);
+	}
 	if (typeof result.status === "number") {
 		return result.status;
 	}

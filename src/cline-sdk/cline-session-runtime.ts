@@ -565,12 +565,20 @@ export class InMemoryClineSessionRuntime implements ClineSessionRuntime {
 
 	private async ensureSessionHost(): Promise<ClineSessionHostBoundary> {
 		if (!this.sessionHostPromise) {
-			this.sessionHostPromise = this.createSessionHost().then((sessionHost: ClineSessionHostBoundary) => {
-				this.sessionHostUnsubscribe = sessionHost.subscribe((event: unknown) => {
-					this.handleSessionEvent(event);
+			this.sessionHostPromise = this.createSessionHost()
+				.then((sessionHost: ClineSessionHostBoundary) => {
+					this.sessionHostUnsubscribe = sessionHost.subscribe((event: unknown) => {
+						this.handleSessionEvent(event);
+					});
+					return sessionHost;
+				})
+				.catch((error: unknown) => {
+					// A cached rejection would fail every later start/send/resume until the
+					// process restarts. Drop it so the next caller can retry host creation.
+					this.sessionHostPromise = null;
+					this.sessionHostUnsubscribe = null;
+					throw error;
 				});
-				return sessionHost;
-			});
 		}
 		return await this.sessionHostPromise;
 	}
