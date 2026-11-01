@@ -167,6 +167,7 @@ export function ClineSetupSection({
 			baseUrl: controller.baseUrl.trim() || selectedProvider?.baseUrl?.trim() || "",
 			models: normalizedModelIds,
 			defaultModelId: controller.modelId.trim() || selectedProvider?.defaultModelId?.trim() || "",
+			capabilities: selectedProvider?.capabilities,
 		};
 	}, [
 		canEditSelectedProvider,

@@ -428,6 +428,15 @@ async function writeModelsRegistry(state: LocalModelsFile): Promise<void> {
 	await writeFile(resolveModelsPath(), `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
+export async function readSdkCustomProviderCapabilities(): Promise<Record<string, SdkCustomProviderCapability[]>> {
+	const state = await readModelsRegistry();
+	return Object.fromEntries(
+		Object.entries(state.providers).flatMap(([providerId, entry]) =>
+			entry.provider?.capabilities ? [[providerId, entry.provider.capabilities] as const] : [],
+		),
+	);
+}
+
 export async function addSdkCustomProvider(input: AddSdkCustomProviderInput): Promise<void> {
 	await addLocalProvider(providerManager, {
 		providerId: input.providerId,

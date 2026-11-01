@@ -12,6 +12,7 @@ import type {
 	RuntimeClineDeviceAuthStartResponse,
 	RuntimeClineKanbanAccessResponse,
 	RuntimeClineOauthLoginResponse,
+	RuntimeClineProviderCapability,
 	RuntimeClineProviderCatalogItem,
 	RuntimeClineProviderCatalogResponse,
 	RuntimeClineProviderModel,
@@ -39,6 +40,7 @@ import {
 	listSdkProviderModels,
 	loginManagedOauthProvider,
 	type ManagedClineOauthProviderId,
+	readSdkCustomProviderCapabilities,
 	refreshManagedOauthCredentials,
 	resolveSdkLaunchProviderId,
 	SDK_DEFAULT_MODEL_ID,
@@ -228,6 +230,15 @@ function hasOauthAccessToken(settings: SdkProviderSettings | null): boolean {
 
 function hasOauthRefreshToken(settings: SdkProviderSettings | null): boolean {
 	return (settings?.auth?.refreshToken?.trim() ?? "").length > 0;
+}
+
+const DIALOG_CAPABILITIES = ["streaming", "tools", "reasoning", "vision", "prompt-cache"] as const;
+
+function toDialogCapabilities(
+	capabilities: readonly string[] | undefined,
+): RuntimeClineProviderCapability[] | undefined {
+	const known = DIALOG_CAPABILITIES.filter((capability) => capabilities?.includes(capability));
+	return known.length > 0 ? known : undefined;
 }
 
 function toRuntimeProviderModel(model: RuntimeClineProviderModel): RuntimeClineProviderModel {
@@ -839,6 +850,10 @@ export function createClineProviderService() {
 		async getProviderCatalog(): Promise<RuntimeClineProviderCatalogResponse> {
 			await ensureProvidersLoaded();
 			const selectedProviderId = getProviderSettingsSummary().providerId?.trim().toLowerCase() ?? "";
+			// The SDK catalog drops streaming/vision from custom providers, so read the saved list from models.json.
+			const customCapabilities = await readSdkCustomProviderCapabilities().catch(
+				(): Record<string, string[]> => ({}),
+			);
 			const providers: RuntimeClineProviderCatalogItem[] = await listSdkProviderCatalog()
 				.then((sdkProviders) =>
 					sdkProviders
@@ -852,6 +867,7 @@ export function createClineProviderService() {
 							baseUrl: provider.baseUrl?.trim() || null,
 							supportsBaseUrl: (provider.baseUrl?.trim().length ?? 0) > 0,
 							env: provider.env,
+							capabilities: toDialogCapabilities(customCapabilities[provider.id] ?? provider.capabilities),
 						}))
 						.sort((left, right) => {
 							if (left.id === "cline") {

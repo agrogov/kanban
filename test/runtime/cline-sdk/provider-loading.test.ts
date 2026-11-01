@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
 	ensureCustomProvidersLoaded: vi.fn(),
 	listSdkProviderCatalog: vi.fn(),
+	readSdkCustomProviderCapabilities: vi.fn(),
 	listSdkProviderModels: vi.fn(),
 	getSdkProviderSettings: vi.fn(),
 	getLastUsedSdkProviderSettings: vi.fn(),
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../../src/cline-sdk/sdk-provider-boundary", () => ({
 	ensureSdkCustomProvidersLoaded: mocks.ensureCustomProvidersLoaded,
 	listSdkProviderCatalog: mocks.listSdkProviderCatalog,
+	readSdkCustomProviderCapabilities: mocks.readSdkCustomProviderCapabilities,
 	listSdkProviderModels: mocks.listSdkProviderModels,
 	getSdkProviderSettings: mocks.getSdkProviderSettings,
 	getLastUsedSdkProviderSettings: mocks.getLastUsedSdkProviderSettings,
@@ -37,6 +39,7 @@ describe("ensureSdkCustomProvidersLoaded call ordering", () => {
 		vi.clearAllMocks();
 		mocks.ensureCustomProvidersLoaded.mockResolvedValue(undefined);
 		mocks.listSdkProviderCatalog.mockResolvedValue([]);
+		mocks.readSdkCustomProviderCapabilities.mockResolvedValue({});
 		mocks.listSdkProviderModels.mockResolvedValue([]);
 		mocks.getSdkProviderSettings.mockReturnValue(undefined);
 		mocks.getLastUsedSdkProviderSettings.mockReturnValue(undefined);
