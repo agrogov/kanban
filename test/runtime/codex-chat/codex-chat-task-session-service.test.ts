@@ -167,6 +167,32 @@ describe("codex chat task session service", () => {
 		await service.dispose();
 	});
 
+	it("starts a fresh thread when a message arrives during a /clear teardown", async () => {
+		const { client, started, resumed } = createFakeClient([
+			async function* (signal) {
+				yield { type: "thread.started", thread_id: "thread-1" };
+				await new Promise<void>((_resolve, reject) => {
+					signal?.addEventListener("abort", () => reject(new Error("aborted")));
+				});
+			},
+			() => completedTurn("fresh"),
+		]);
+		const service = createCodexChatTaskSessionService({ client, stateDir });
+		await service.startTaskSession({ taskId: "t1", cwd: "/w", prompt: "first" });
+		await waitFor(() => service.getSummary("t1")?.state === "running");
+
+		// Clear while the first turn is still streaming: the old thread must not be
+		// reused, and the follow-up message must not be swallowed by the teardown.
+		await service.clearTaskSession("t1");
+		await service.sendTaskSessionInput("t1", "brand new");
+		await waitFor(() => service.getSummary("t1")?.state === "awaiting_review");
+
+		expect(started).toHaveLength(2);
+		expect(resumed).toHaveLength(0);
+		expect(service.listMessages("t1").map((message) => message.role)).toEqual(["user", "assistant"]);
+		await service.dispose();
+	});
+
 	it("resumes the persisted thread after a restart", async () => {
 		const first = createFakeClient([() => completedTurn("hi")]);
 		const service = createCodexChatTaskSessionService({ client: first.client, stateDir });

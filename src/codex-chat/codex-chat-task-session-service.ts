@@ -48,6 +48,12 @@ interface LiveSession {
 	abort: AbortController | null;
 	/** Kanban ended or canceled the work on purpose, so the aborted stream is not a failure. */
 	stoppedByKanban: boolean;
+	/**
+	 * `terminate()` was called: this session (thread included) is finished and must be
+	 * dropped once its in-flight turn settles. Kept separate from `stoppedByKanban`,
+	 * which a plain cancel/interrupt clears.
+	 */
+	terminating: boolean;
 	reducerState: CodexReducerState;
 }
 
@@ -132,18 +138,22 @@ class CodexChatTaskSessionServiceImpl extends NativeChatSessionService {
 		images: RuntimeTaskImage[] | undefined,
 		canResume: boolean,
 	): void {
-		let live = this.live.get(taskId);
-		if (!live) {
-			live = {
-				thread: null,
-				pending: [],
-				running: false,
-				abort: null,
-				stoppedByKanban: false,
-				reducerState: createCodexReducerState(),
-			};
-			this.live.set(taskId, live);
-		}
+		const existing = this.live.get(taskId);
+		// A session being torn down (stop or /clear) must not swallow a message that
+		// arrives while the abort is still settling — start a fresh one instead.
+		const live =
+			existing && !existing.terminating
+				? existing
+				: {
+						thread: null,
+						pending: [] as PendingTurn[],
+						running: false,
+						abort: null,
+						stoppedByKanban: false,
+						terminating: false,
+						reducerState: createCodexReducerState(),
+					};
+		this.live.set(taskId, live);
 		live.pending.push({ text, images });
 		if (!live.running) {
 			void this.drain(taskId, entry, live, canResume);
@@ -194,7 +204,7 @@ class CodexChatTaskSessionServiceImpl extends NativeChatSessionService {
 			}
 		} finally {
 			live.running = false;
-			if (live.stoppedByKanban && this.live.get(taskId) === live) {
+			if (live.terminating && this.live.get(taskId) === live) {
 				this.live.delete(taskId);
 			}
 		}
@@ -281,6 +291,7 @@ class CodexChatTaskSessionServiceImpl extends NativeChatSessionService {
 		if (!live) {
 			return;
 		}
+		live.terminating = true;
 		live.stoppedByKanban = true;
 		live.pending.length = 0;
 		live.abort?.abort();

@@ -57,6 +57,12 @@ interface LiveSession {
 	running: boolean;
 	/** Kanban canceled or ended the work on purpose, so the aborted run is not a failure. */
 	stoppedByKanban: boolean;
+	/**
+	 * `terminate()` was called: the session must be released (subscription removed,
+	 * agent session disposed, entry dropped) once the in-flight turn settles.
+	 * Kept separate from `stoppedByKanban`, which runTurn clears for a mere cancel.
+	 */
+	terminating: boolean;
 	reducerState: PiReducerState;
 }
 
@@ -139,6 +145,7 @@ class PiChatTaskSessionServiceImpl extends NativeChatSessionService {
 				pending: [],
 				running: false,
 				stoppedByKanban: false,
+				terminating: false,
 				reducerState: createPiReducerState(),
 			};
 			this.live.set(taskId, live);
@@ -179,7 +186,7 @@ class PiChatTaskSessionServiceImpl extends NativeChatSessionService {
 			}
 		} finally {
 			live.running = false;
-			if (live.stoppedByKanban) {
+			if (live.terminating) {
 				this.release(taskId, live);
 			}
 		}
@@ -230,6 +237,7 @@ class PiChatTaskSessionServiceImpl extends NativeChatSessionService {
 		if (!live) {
 			return;
 		}
+		live.terminating = true;
 		live.stoppedByKanban = true;
 		live.pending.length = 0;
 		void live.session?.abort().catch(() => undefined);
