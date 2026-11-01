@@ -111,6 +111,7 @@ function HookHarness({
 		board,
 		setBoard,
 		sessions,
+		workspaceHydrationNonce: 0,
 		setSessions,
 		selectedCard,
 		selectedTaskId: null,

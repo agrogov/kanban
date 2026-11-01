@@ -127,7 +127,9 @@ export function useWorkspacePersistence({
 							requestId === latestPersistRequestIdRef.current &&
 							currentProjectIdRef.current === persistWorkspaceId
 						) {
-							onWorkspaceRevisionChange(error.currentRevision);
+							// Do not adopt the server revision here: the refetch below must see a revision change so it
+							// hydrates the server board. Adopting it first would make the stale local board look current
+							// and the next save would overwrite the server's changes.
 							onWorkspaceStateConflict?.({
 								workspaceId: persistWorkspaceId,
 								currentRevision: error.currentRevision,

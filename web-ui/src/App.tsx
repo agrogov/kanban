@@ -579,6 +579,7 @@ export default function App(): ReactElement {
 		board,
 		setBoard,
 		sessions,
+		workspaceHydrationNonce,
 		setSessions,
 		selectedCard,
 		selectedTaskId,

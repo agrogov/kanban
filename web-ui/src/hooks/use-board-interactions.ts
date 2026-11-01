@@ -50,6 +50,8 @@ interface UseBoardInteractionsInput {
 	board: BoardData;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	sessions: Record<string, RuntimeTaskSessionSummary>;
+	/** Bumps whenever the board is replaced by server state, so session-driven moves are re-derived against it. */
+	workspaceHydrationNonce: number;
 	setSessions: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
 	selectedCard: SelectedBoardCard | null;
 	selectedTaskId: string | null;
@@ -96,6 +98,7 @@ export function useBoardInteractions({
 	board,
 	setBoard,
 	sessions,
+	workspaceHydrationNonce,
 	setSessions,
 	selectedCard,
 	selectedTaskId,
@@ -501,7 +504,14 @@ export function useBoardInteractions({
 			previousSessionsRef.current = nextPreviousSessions;
 			return nextBoard;
 		});
-	}, [programmaticCardMoveCycle, sessions, setBoard, setSelectedTaskId, tryProgrammaticCardMove]);
+	}, [
+		programmaticCardMoveCycle,
+		sessions,
+		setBoard,
+		setSelectedTaskId,
+		tryProgrammaticCardMove,
+		workspaceHydrationNonce,
+	]);
 
 	const { confirmMoveTaskToTrash, handleCreateDependency, handleDeleteDependency, requestMoveTaskToTrash } =
 		useLinkedBacklogTaskActions({
