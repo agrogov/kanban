@@ -213,6 +213,17 @@ describe("readPiDefaultModel", () => {
 				JSON.stringify({ defaultProvider: "strata", defaultModel: "qwen-flash" }),
 			);
 			expect(await readPiDefaultModel(dir)).toBe("strata/qwen-flash");
+
+			// An enabled model list wins over the legacy default pair, like the CLI.
+			await writeFile(
+				join(dir, "settings.json"),
+				JSON.stringify({
+					defaultProvider: "strata",
+					defaultModel: "qwen-flash",
+					enabledModels: ["commandcode/deepseek/deepseek-v4.1-flash"],
+				}),
+			);
+			expect(await readPiDefaultModel(dir)).toBe("commandcode/deepseek/deepseek-v4.1-flash");
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}

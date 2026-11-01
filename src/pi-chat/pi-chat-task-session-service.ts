@@ -138,6 +138,18 @@ export async function readPiDefaultModel(agentDir: string = getAgentDir()): Prom
 		if (!parsed || typeof parsed !== "object") {
 			return null;
 		}
+		// The CLI treats the user's enabled model list as the scoped selection, which
+		// wins over `defaultProvider`/`defaultModel`; using the latter alone picked a
+		// provider the user is not actually driving.
+		const enabledModels = (parsed as { enabledModels?: unknown }).enabledModels;
+		if (Array.isArray(enabledModels)) {
+			const firstEnabled = enabledModels.find(
+				(entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
+			);
+			if (firstEnabled) {
+				return firstEnabled.trim();
+			}
+		}
 		const provider = (parsed as { defaultProvider?: unknown }).defaultProvider;
 		const model = (parsed as { defaultModel?: unknown }).defaultModel;
 		if (typeof provider !== "string" || typeof model !== "string" || !provider.trim() || !model.trim()) {
