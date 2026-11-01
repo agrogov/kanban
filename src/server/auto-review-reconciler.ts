@@ -68,6 +68,8 @@ export interface AutoReviewTaskProbe {
 	 * Commits in the task worktree that have not landed on the base ref yet (patch-equivalent
 	 * commits already cherry-picked there do not count). Covers agents that commit their own work,
 	 * which leaves a clean tree that would otherwise look like "nothing to do".
+	 *
+	 * `undefined` means unknown (the git probe failed), which is deliberately distinct from `0`.
 	 */
 	unlandedCommits?: number;
 }
@@ -232,11 +234,13 @@ async function defaultProbeTaskWorkspace(input: {
 	};
 }
 
-export async function countUnlandedCommits(worktreePath: string, baseRef: string): Promise<number> {
+export async function countUnlandedCommits(worktreePath: string, baseRef: string): Promise<number | undefined> {
 	// `git cherry` prefixes commits missing from the base with "+" and patch-equivalent ones with "-".
 	const result = await runGit(worktreePath, ["cherry", baseRef, "HEAD"]);
 	if (!result.ok) {
-		return 0;
+		// Unknown must not collapse into zero: `0` means "nothing left to land", which completes the
+		// card and deletes the worktree. On a transient git failure that would destroy unlanded work.
+		return undefined;
 	}
 	const missing = result.stdout
 		.split("\n")
@@ -247,8 +251,12 @@ export async function countUnlandedCommits(worktreePath: string, baseRef: string
 	}
 	// A cherry-pick whose conflicts were resolved by hand has a different patch id, so `git cherry`
 	// reports it as missing forever. Cherry-pick keeps author, author date and subject: match on those.
+	// Trade-off: two genuinely distinct commits that share author, author date and subject (rebase or
+	// squash-and-recommit flows) become indistinguishable, so one can vouch for the other.
 	const identities = await Promise.all(missing.map((sha) => readCommitIdentity(worktreePath, sha)));
 	const baseIdentities = await readBaseIdentities(worktreePath, baseRef, identities);
+	// A failed identity read yields `null` and a failed base log yields an empty set, so both errors
+	// keep the commit counted as unlanded.
 	return identities.filter((identity) => identity === null || !baseIdentities.has(identity)).length;
 }
 

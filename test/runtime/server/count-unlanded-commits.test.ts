@@ -28,6 +28,11 @@ describe("countUnlandedCommits", () => {
 		expect(await countUnlandedCommits(repo, "main")).toBe(1);
 	});
 
+	it("reports an unknown count instead of zero when git cannot compare against the base", async () => {
+		// Unknown must stay distinct from "nothing left to land", which completes the card.
+		expect(await countUnlandedCommits(repo, "no-such-base-ref")).toBeUndefined();
+	});
+
 	it("treats a hand-resolved cherry-pick as landed even though its patch id differs", async () => {
 		const sha = (await runGit(repo, ["rev-parse", "HEAD"])).stdout.trim();
 		await runGit(repo, ["checkout", "main"]);

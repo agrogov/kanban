@@ -468,6 +468,50 @@ describe("auto-review reconciler", () => {
 		expect(harness.terminal.writeInput).not.toHaveBeenCalled();
 	});
 
+	it("keeps the worktree when the landing state is unknown", async () => {
+		const armedCard = createCard({
+			id: "task-1",
+			autoReviewEnabled: true,
+			pendingGitAction: {
+				action: "commit",
+				requestedAt: Date.now(),
+				headCommitAtRequest: "commit-1",
+				attempt: 0,
+			},
+		});
+		const harness = createHarness({ board: createBoard({ review: [armedCard] }) });
+		// `git cherry` failed, so the probe has no landing evidence to offer.
+		harness.setProbe("task-1", { exists: true, headCommit: "commit-1", changedFiles: 0, unlandedCommits: undefined });
+
+		await harness.evaluate();
+
+		// Nothing proves the work landed: the card stays armed and the worktree survives.
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("review");
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.card.pendingGitAction ?? null).not.toBeNull();
+		expect(harness.deleteTaskWorktree).not.toHaveBeenCalled();
+	});
+
+	it("does not delete the worktree when HEAD moved but landing could not be verified", async () => {
+		const armedCard = createCard({
+			id: "task-1",
+			autoReviewEnabled: true,
+			pendingGitAction: {
+				action: "commit",
+				requestedAt: Date.now(),
+				headCommitAtRequest: "commit-1",
+				attempt: 0,
+			},
+		});
+		const harness = createHarness({ board: createBoard({ review: [armedCard] }) });
+		harness.setProbe("task-1", { exists: true, headCommit: "commit-2", changedFiles: 0, unlandedCommits: undefined });
+
+		await harness.evaluate();
+
+		// The HEAD-moved heuristic still closes the action, but cleanup needs positive landing evidence.
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("trash");
+		expect(harness.deleteTaskWorktree).not.toHaveBeenCalled();
+	});
+
 	it("stops re-prompting a card whose commits never land", async () => {
 		let currentTime = 1_000_000;
 		const card = createCard({ id: "task-1", autoReviewEnabled: true });
