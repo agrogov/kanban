@@ -429,82 +429,91 @@ export function useBoardInteractions({
 		],
 	);
 
+	// Session-driven column moves. The decisions are made here (once per effect run,
+	// against the current board) and the board update below only replays the resulting
+	// moves, so the updater stays pure and idempotent. Previously the programmatic-move
+	// decisions, the selection change and the previousSessionsRef write all happened
+	// inside the setBoard updater: React may invoke an updater more than once, and on a
+	// replay `previous.state` was already "interrupted", which silently dropped the move.
 	useEffect(() => {
-		setBoard((currentBoard) => {
-			let nextBoard = currentBoard;
-			const previousSessions = previousSessionsRef.current;
-			const blockedInterruptedTaskIds = new Set<string>();
-			for (const summary of Object.values(sessions)) {
-				const previous = previousSessions[summary.taskId];
-				if (previous && previous.updatedAt > summary.updatedAt) {
-					continue;
-				}
-				const columnId = getTaskColumnId(nextBoard, summary.taskId);
-				if (summary.state === "awaiting_review" && columnId === "in_progress") {
-					const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "review");
-					if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
-						continue;
-					}
-					const moved = moveTaskToColumn(nextBoard, summary.taskId, "review", { insertAtTop: true });
-					if (moved.moved) {
-						nextBoard = moved.board;
-					}
-					continue;
-				}
-				if (summary.state === "running" && columnId === "review") {
-					const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "in_progress", {
-						skipKickoff: true,
-					});
-					if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
-						continue;
-					}
-					const moved = moveTaskToColumn(nextBoard, summary.taskId, "in_progress", { insertAtTop: true });
-					if (moved.moved) {
-						nextBoard = moved.board;
-					}
-					continue;
-				}
-				if (
-					summary.state === "interrupted" &&
-					previous?.state !== "interrupted" &&
-					columnId &&
-					columnId !== "trash"
-				) {
-					const nextTaskId = getNextDetailTaskIdAfterTrashMove(nextBoard, summary.taskId);
-					const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "trash", {
-						skipTrashWorkflow: true,
-					});
-					if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
-						if (programmaticMoveAttempt === "blocked") {
-							blockedInterruptedTaskIds.add(summary.taskId);
-						}
-						setSelectedTaskId((currentSelectedTaskId) =>
-							currentSelectedTaskId === summary.taskId ? nextTaskId : currentSelectedTaskId,
-						);
-						continue;
-					}
-					const moved = moveTaskToColumn(nextBoard, summary.taskId, "trash", { insertAtTop: true });
-					if (moved.moved) {
-						setSelectedTaskId((currentSelectedTaskId) =>
-							currentSelectedTaskId === summary.taskId ? nextTaskId : currentSelectedTaskId,
-						);
-						nextBoard = moved.board;
-					}
-				}
+		const previousSessions = previousSessionsRef.current;
+		const blockedInterruptedTaskIds = new Set<string>();
+		const selections: Array<{ taskId: string; nextTaskId: string | null }> = [];
+		const directMoves: Array<{ taskId: string; columnId: BoardColumnId; insertAtTop: true }> = [];
+
+		for (const summary of Object.values(sessions)) {
+			const previous = previousSessions[summary.taskId];
+			if (previous && previous.updatedAt > summary.updatedAt) {
+				continue;
 			}
-			const nextPreviousSessions = { ...sessions };
-			for (const taskId of blockedInterruptedTaskIds) {
-				const previousSession = previousSessions[taskId];
-				if (previousSession) {
-					nextPreviousSessions[taskId] = previousSession;
+			const columnId = getTaskColumnId(board, summary.taskId);
+			if (summary.state === "awaiting_review" && columnId === "in_progress") {
+				const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "review");
+				if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
 					continue;
 				}
-				delete nextPreviousSessions[taskId];
+				directMoves.push({ taskId: summary.taskId, columnId: "review", insertAtTop: true });
+				continue;
 			}
-			previousSessionsRef.current = nextPreviousSessions;
-			return nextBoard;
-		});
+			if (summary.state === "running" && columnId === "review") {
+				const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "in_progress", {
+					skipKickoff: true,
+				});
+				if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
+					continue;
+				}
+				directMoves.push({ taskId: summary.taskId, columnId: "in_progress", insertAtTop: true });
+				continue;
+			}
+			if (summary.state === "interrupted" && previous?.state !== "interrupted" && columnId && columnId !== "trash") {
+				const nextTaskId = getNextDetailTaskIdAfterTrashMove(board, summary.taskId);
+				const programmaticMoveAttempt = tryProgrammaticCardMove(summary.taskId, columnId, "trash", {
+					skipTrashWorkflow: true,
+				});
+				if (programmaticMoveAttempt === "started" || programmaticMoveAttempt === "blocked") {
+					if (programmaticMoveAttempt === "blocked") {
+						blockedInterruptedTaskIds.add(summary.taskId);
+					}
+					selections.push({ taskId: summary.taskId, nextTaskId });
+					continue;
+				}
+				directMoves.push({ taskId: summary.taskId, columnId: "trash", insertAtTop: true });
+				selections.push({ taskId: summary.taskId, nextTaskId });
+			}
+		}
+
+		const nextPreviousSessions = { ...sessions };
+		for (const taskId of blockedInterruptedTaskIds) {
+			const previousSession = previousSessions[taskId];
+			if (previousSession) {
+				nextPreviousSessions[taskId] = previousSession;
+				continue;
+			}
+			delete nextPreviousSessions[taskId];
+		}
+		// Advanced once per run, before the board update, so a replayed updater cannot
+		// observe (or depend on) a partially applied state.
+		previousSessionsRef.current = nextPreviousSessions;
+
+		if (directMoves.length > 0) {
+			setBoard((currentBoard) => {
+				let nextBoard = currentBoard;
+				for (const move of directMoves) {
+					const moved = moveTaskToColumn(nextBoard, move.taskId, move.columnId, { insertAtTop: move.insertAtTop });
+					if (moved.moved) {
+						nextBoard = moved.board;
+					}
+				}
+				return nextBoard;
+			});
+		}
+		for (const selection of selections) {
+			setSelectedTaskId((currentSelectedTaskId) =>
+				currentSelectedTaskId === selection.taskId ? selection.nextTaskId : currentSelectedTaskId,
+			);
+		}
 	}, [
+		board,
 		programmaticCardMoveCycle,
 		sessions,
 		setBoard,
