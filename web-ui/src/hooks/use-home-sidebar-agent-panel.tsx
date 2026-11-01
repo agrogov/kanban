@@ -12,7 +12,7 @@ import { selectNewestTaskSessionSummary } from "@/hooks/home-sidebar-agent-panel
 import { useClineChatRuntimeActions } from "@/hooks/use-cline-chat-runtime-actions";
 import { useHomeAgentSession } from "@/hooks/use-home-agent-session";
 import { useIsMobile } from "@/hooks/use-is-mobile";
-import { selectLatestTaskChatMessageForTask } from "@/runtime/native-agent";
+import { isNativeClineAgentSelected, selectLatestTaskChatMessageForTask } from "@/runtime/native-agent";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeConfigResponse,
@@ -103,11 +103,12 @@ export function useHomeSidebarAgentPanel({
 		if (!runtimeProjectConfig) {
 			return "selected agent";
 		}
-		return (
+		const label =
 			runtimeProjectConfig.agents.find((agent) => agent.id === runtimeProjectConfig.selectedAgentId)?.label ??
-			"selected agent"
-		);
+			"selected agent";
+		return label.replace(/\s*\(chat view\)\s*$/i, "").trim();
 	}, [runtimeProjectConfig]);
+	const isClineChat = isNativeClineAgentSelected(runtimeProjectConfig?.selectedAgentId);
 
 	const homeAgentPanelSummary = taskId ? (effectiveSessionSummaries[taskId] ?? null) : null;
 	const homeTaskChatMessages = taskId ? (taskChatMessagesByTaskId[taskId] ?? null) : null;
@@ -166,7 +167,11 @@ export function useHomeSidebarAgentPanel({
 				onLoadMessages={handleLoadHomeClineChatMessages}
 				incomingMessage={latestHomeTaskChatMessage}
 				incomingMessages={homeTaskChatMessages}
-				composerPlaceholder="Ask Cline to add, edit, start, or link tasks"
+				// The panel is shared by every native chat agent, so its copy and the
+				// model picker must follow the selected agent: the picker lists the Cline
+				// provider's models and is meaningless for Claude/Codex/Pi chat views.
+				composerPlaceholder={`Ask ${selectedAgentLabel} to add, edit, start, or link tasks`}
+				showModelPicker={isClineChat}
 			/>
 		);
 	}
