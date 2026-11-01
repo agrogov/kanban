@@ -5,6 +5,7 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import { type Api, isModelType, type Model } from "@earendil-works/pi-ai";
 import {
 	type AgentSession,
 	type AgentSessionEvent,
@@ -96,8 +97,12 @@ export function selectPiChatModel<T extends { provider: string; id: string }>(
 	modelId: string | null,
 ): T | null {
 	if (availableModels.length === 0) {
+		// `getAvailableSnapshot()` reports built-in providers with credentials only; the
+		// models a `pi` user actually configured live in ~/.pi/agent/models.json. Pass
+		// every configured model here so a custom provider is not mistaken for "Pi is
+		// not signed in".
 		throw new Error(
-			"Pi has no available models: its credentials are empty. Sign in to a provider with the `pi` CLI, then retry.",
+			"Pi has no models configured. Add a provider to ~/.pi/agent/models.json (or run the `pi` CLI once) and retry.",
 		);
 	}
 	if (!modelId) {
@@ -120,7 +125,13 @@ const createSdkSession: CreatePiChatSession = async (settings) => {
 		sessionManager: SessionManager.continueRecent(settings.cwd, settings.sessionDir),
 	};
 	const modelRuntime = await ModelRuntime.create();
-	const model = selectPiChatModel(modelRuntime.getAvailableSnapshot(), settings.modelId);
+	// `getAllModels()` also lists image/classifier entries; only chat models can be
+	// handed to the session, and custom providers from ~/.pi/agent/models.json are
+	// included here (unlike the credential-filtered availability snapshot).
+	const chatModels: Model<Api>[] = modelRuntime
+		.getAllModels()
+		.filter((candidate): candidate is Model<Api> => isModelType(candidate, "chat"));
+	const model = selectPiChatModel(chatModels, settings.modelId);
 	if (model) {
 		options.modelRuntime = modelRuntime;
 		options.model = model;

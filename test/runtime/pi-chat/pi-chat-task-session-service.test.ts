@@ -184,9 +184,9 @@ describe("selectPiChatModel", () => {
 		{ provider: "openai", id: "gpt-6" },
 	];
 
-	it("explains the missing credentials instead of letting the SDK time out", () => {
-		expect(() => selectPiChatModel([], null)).toThrow(/no available models/i);
-		expect(() => selectPiChatModel([], "anthropic/claude-sonnet-5")).toThrow(/no available models/i);
+	it("explains an unconfigured Pi instead of letting the SDK time out", () => {
+		expect(() => selectPiChatModel([], null)).toThrow(/no models configured/i);
+		expect(() => selectPiChatModel([], "anthropic/claude-sonnet-5")).toThrow(/no models configured/i);
 	});
 
 	it("returns null so the SDK picks its own default when no model was requested", () => {
