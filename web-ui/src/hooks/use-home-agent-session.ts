@@ -287,8 +287,18 @@ export function useHomeAgentSession({
 		};
 	}, [clineSessionContextVersion, currentProjectId, descriptor, sessionSummaries, upsertSessionSummary]);
 
+	// Every chat-view agent apart from the embedded Cline one must own its synthetic
+	// session before the first message is sent: the composite router falls back to the
+	// Cline backend for any task no backend knows, so a lazily sent first message was
+	// answered by Cline while the panel was labelled with the selected agent.
+	// Cline keeps the lazy path — it *is* that fallback.
+	const shouldStartSessionEagerly =
+		descriptor !== null &&
+		(descriptor.panelMode === "terminal" ||
+			(descriptor.panelMode === "chat" && runtimeProjectConfig?.selectedAgentId !== "cline"));
+
 	useEffect(() => {
-		if (!currentProjectId || !descriptor || descriptor.panelMode !== "terminal") {
+		if (!currentProjectId || !descriptor || !shouldStartSessionEagerly) {
 			return;
 		}
 
@@ -361,7 +371,7 @@ export function useHomeAgentSession({
 				notifyError(message);
 			}
 		})();
-	}, [currentProjectId, descriptor, sessionSummaries, upsertSessionSummary]);
+	}, [currentProjectId, descriptor, sessionSummaries, shouldStartSessionEagerly, upsertSessionSummary]);
 
 	useEffect(() => {
 		return () => {

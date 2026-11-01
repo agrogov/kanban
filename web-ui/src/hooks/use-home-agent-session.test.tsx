@@ -402,6 +402,12 @@ describe("useHomeAgentSession", () => {
 			const snapshot = requireSnapshot(latestSnapshot);
 			expect(snapshot.panelMode).toBe("chat");
 			expect(snapshot.taskId).toBe(`__home_agent__:workspace-1:${agentId}`);
+			// The session must be started with this agent before the first message:
+			// otherwise the composite router falls back to the Cline backend, which
+			// answers the message while the panel is labelled with another agent.
+			expect(startTaskSessionMutateMock).toHaveBeenCalledWith(
+				expect.objectContaining({ taskId: `__home_agent__:workspace-1:${agentId}`, prompt: "" }),
+			);
 		},
 	);
 
