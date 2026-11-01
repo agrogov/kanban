@@ -232,6 +232,12 @@ class CodexChatTaskSessionServiceImpl extends NativeChatSessionService {
 					? `${settings.systemPrompt}\n\n${turn.text}`
 					: turn.text;
 			const input = await this.buildInput(taskId, prompt, turn.images, imagePaths);
+			// Codex item ids are only unique within one turn's event stream: the next turn
+			// restarts at e.g. `item_0`, and keeping the old mapping made the reducer treat
+			// the new answer as an update of the previous turn's message — overwriting the
+			// earlier bubble (which then sits above its own question) instead of appending.
+			live.reducerState.messageIdByItemId.clear();
+
 			const { events } = await thread.runStreamed(input, { signal: controller.signal });
 			for await (const event of events) {
 				const reduction = reduceCodexEvent(taskId, entry, live.reducerState, event);

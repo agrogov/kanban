@@ -167,6 +167,27 @@ describe("codex chat task session service", () => {
 		await service.dispose();
 	});
 
+	it("keeps both answers when consecutive turns reuse Codex item ids", async () => {
+		// Codex restarts item ids every turn ("item_0", "a", ...). Reusing the previous
+		// turn's mapping made the second answer overwrite the first bubble.
+		const turn = (text: string) =>
+			async function* () {
+				yield { type: "thread.started", thread_id: "thread-1" };
+				yield { type: "item.completed", item: { id: "a", type: "agent_message", text } };
+				yield { type: "turn.completed", usage: { input_tokens: 1, output_tokens: 1, cached_input_tokens: 0 } };
+			} as never;
+		const { client } = createFakeClient([turn("first answer"), turn("second answer")]);
+		const service = createCodexChatTaskSessionService({ client, stateDir });
+		await service.startTaskSession({ taskId: "t1", cwd: "/w", prompt: "one" });
+		await waitFor(() => service.getSummary("t1")?.state === "awaiting_review");
+		await service.sendTaskSessionInput("t1", "two");
+		await waitFor(() => service.getSummary("t1")?.state === "awaiting_review");
+
+		const assistant = service.listMessages("t1").filter((message) => message.role === "assistant");
+		expect(assistant.map((message) => message.content)).toEqual(["first answer", "second answer"]);
+		await service.dispose();
+	});
+
 	it("starts a fresh thread when a message arrives during a /clear teardown", async () => {
 		const { client, started, resumed } = createFakeClient([
 			async function* (signal) {
