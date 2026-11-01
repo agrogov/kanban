@@ -136,12 +136,25 @@ export abstract class NativeChatSessionService implements NativeChatBackend {
 	async sendTaskSessionInput(
 		taskId: string,
 		text: string,
-		_mode?: RuntimeTaskSessionMode,
+		mode?: RuntimeTaskSessionMode,
 		images?: RuntimeTaskImage[],
 	): Promise<RuntimeTaskSessionSummary | null> {
 		const entry = this.repository.getTaskEntry(taskId);
-		if (!entry || !this.settingsByTaskId.has(taskId)) {
+		const settings = this.settingsByTaskId.get(taskId);
+		if (!entry || !settings) {
 			return null;
+		}
+		if (mode !== undefined && mode !== settings.mode) {
+			// Callers pass "act" for git/commit prompts, which must not run inside a
+			// plan-mode transport. Record the mode and drop an idle session so the next
+			// dispatch rebuilds its transport with the requested permission mode; a turn
+			// that is still streaming keeps its transport and picks the mode up on the
+			// next rebuild.
+			settings.mode = mode;
+			if (entry.summary.state !== "running") {
+				this.terminate(taskId);
+			}
+			this.emitSummary(updateSummary(entry, { mode }));
 		}
 		this.deliver(taskId, entry, text, images, true);
 		return cloneSummary(entry.summary);
