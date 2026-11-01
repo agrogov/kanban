@@ -10,6 +10,7 @@ import {
 	createPiChatTaskSessionService,
 	type PiChatSession,
 	type PiSessionSettings,
+	selectPiChatModel,
 } from "../../../src/pi-chat/pi-chat-task-session-service";
 
 type Listener = (event: AgentSessionEvent) => void;
@@ -174,5 +175,30 @@ describe("pi chat task session service", () => {
 		expect(service.getSummary("t1")?.state).toBe("idle");
 		expect(service.listMessages("t1").some((message) => message.role === "system")).toBe(false);
 		await service.dispose();
+	});
+});
+
+describe("selectPiChatModel", () => {
+	const models = [
+		{ provider: "anthropic", id: "claude-sonnet-5" },
+		{ provider: "openai", id: "gpt-6" },
+	];
+
+	it("explains the missing credentials instead of letting the SDK time out", () => {
+		expect(() => selectPiChatModel([], null)).toThrow(/no available models/i);
+		expect(() => selectPiChatModel([], "anthropic/claude-sonnet-5")).toThrow(/no available models/i);
+	});
+
+	it("returns null so the SDK picks its own default when no model was requested", () => {
+		expect(selectPiChatModel(models, null)).toBeNull();
+	});
+
+	it("resolves provider/id and bare model ids", () => {
+		expect(selectPiChatModel(models, "openai/gpt-6")).toEqual(models[1]);
+		expect(selectPiChatModel(models, "gpt-6")).toEqual(models[1]);
+	});
+
+	it("rejects a model that is not available", () => {
+		expect(() => selectPiChatModel(models, "anthropic/claude-opus-9")).toThrow(/not available/i);
 	});
 });

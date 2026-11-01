@@ -83,24 +83,45 @@ export function buildPiSessionOptions(
 	return options;
 }
 
+/**
+ * Resolve the Pi model for a chat session, or explain why there is none.
+ *
+ * With no model id the Pi SDK falls back to its own default, which silently
+ * issues a provider request even when Pi has no credentials at all — that
+ * request only surfaces as an opaque "Request timed out." minutes later. Check
+ * availability up front so the chat reports the real problem immediately.
+ */
+export function selectPiChatModel<T extends { provider: string; id: string }>(
+	availableModels: readonly T[],
+	modelId: string | null,
+): T | null {
+	if (availableModels.length === 0) {
+		throw new Error(
+			"Pi has no available models: its credentials are empty. Sign in to a provider with the `pi` CLI, then retry.",
+		);
+	}
+	if (!modelId) {
+		return null;
+	}
+	// Same convention as `pi --model`: "provider/id" or a bare model id.
+	const model = availableModels.find(
+		(candidate) => `${candidate.provider}/${candidate.id}` === modelId || candidate.id === modelId,
+	);
+	if (!model) {
+		throw new Error(`Pi model "${modelId}" is not available. Check your Pi credentials.`);
+	}
+	return model;
+}
+
 const createSdkSession: CreatePiChatSession = async (settings) => {
 	const options: CreateAgentSessionOptions = {
 		...buildPiSessionOptions(settings),
 		// continueRecent resumes the conversation stored in the per-conversation directory, if any.
 		sessionManager: SessionManager.continueRecent(settings.cwd, settings.sessionDir),
 	};
-	if (settings.modelId) {
-		// Same convention as `pi --model`: "provider/id" or a bare model id.
-		const modelRuntime = await ModelRuntime.create();
-		const model = modelRuntime
-			.getAvailableSnapshot()
-			.find(
-				(candidate) =>
-					`${candidate.provider}/${candidate.id}` === settings.modelId || candidate.id === settings.modelId,
-			);
-		if (!model) {
-			throw new Error(`Pi model "${settings.modelId}" is not available. Check your Pi credentials.`);
-		}
+	const modelRuntime = await ModelRuntime.create();
+	const model = selectPiChatModel(modelRuntime.getAvailableSnapshot(), settings.modelId);
+	if (model) {
 		options.modelRuntime = modelRuntime;
 		options.model = model;
 	}
