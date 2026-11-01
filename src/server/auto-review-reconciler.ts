@@ -123,7 +123,12 @@ interface ReconcilerWorkspaceRuntime {
 	gitActionInFlightTaskIds: Set<string>;
 	submitTimers: Set<NodeJS.Timeout>;
 	clineUnavailableLoggedTaskIds: Set<string>;
+	/** Git-action prompts sent per task for the current worktree HEAD, so a card that never lands is not re-prompted forever. */
+	gitActionAttemptsByTaskId: Map<string, { headCommit: string | null; count: number }>;
 }
+
+/** Each attempt bounces the card review -> in_progress -> review, so stop after a few. */
+const MAX_GIT_ACTION_ATTEMPTS_PER_HEAD = 3;
 
 function createWorkspaceRuntime(): ReconcilerWorkspaceRuntime {
 	return {
@@ -132,6 +137,7 @@ function createWorkspaceRuntime(): ReconcilerWorkspaceRuntime {
 		gitActionInFlightTaskIds: new Set<string>(),
 		submitTimers: new Set<NodeJS.Timeout>(),
 		clineUnavailableLoggedTaskIds: new Set<string>(),
+		gitActionAttemptsByTaskId: new Map(),
 	};
 }
 
@@ -226,13 +232,52 @@ async function defaultProbeTaskWorkspace(input: {
 	};
 }
 
-async function countUnlandedCommits(worktreePath: string, baseRef: string): Promise<number> {
+export async function countUnlandedCommits(worktreePath: string, baseRef: string): Promise<number> {
 	// `git cherry` prefixes commits missing from the base with "+" and patch-equivalent ones with "-".
 	const result = await runGit(worktreePath, ["cherry", baseRef, "HEAD"]);
 	if (!result.ok) {
 		return 0;
 	}
-	return result.stdout.split("\n").filter((line) => line.startsWith("+")).length;
+	const missing = result.stdout
+		.split("\n")
+		.filter((line) => line.startsWith("+"))
+		.map((line) => line.slice(1).trim());
+	if (missing.length === 0) {
+		return 0;
+	}
+	// A cherry-pick whose conflicts were resolved by hand has a different patch id, so `git cherry`
+	// reports it as missing forever. Cherry-pick keeps author, author date and subject: match on those.
+	const identities = await Promise.all(missing.map((sha) => readCommitIdentity(worktreePath, sha)));
+	const baseIdentities = await readBaseIdentities(worktreePath, baseRef, identities);
+	return identities.filter((identity) => identity === null || !baseIdentities.has(identity)).length;
+}
+
+const COMMIT_IDENTITY_FORMAT = "%an%x00%at%x00%s";
+
+async function readCommitIdentity(worktreePath: string, sha: string): Promise<string | null> {
+	const result = await runGit(worktreePath, ["log", "-1", `--format=${COMMIT_IDENTITY_FORMAT}`, sha]);
+	return result.ok ? result.stdout.trim() : null;
+}
+
+async function readBaseIdentities(
+	worktreePath: string,
+	baseRef: string,
+	identities: (string | null)[],
+): Promise<Set<string>> {
+	const earliest = Math.min(
+		...identities.map((identity) => Number(identity?.split("\0")[1] ?? Number.POSITIVE_INFINITY)),
+	);
+	if (!Number.isFinite(earliest)) {
+		return new Set();
+	}
+	const result = await runGit(worktreePath, [
+		"log",
+		baseRef,
+		`--since=${earliest - 1}`,
+		`--format=${COMMIT_IDENTITY_FORMAT}`,
+	]);
+	// --since filters on committer date, which is always >= the author date of a cherry-pick.
+	return new Set(result.ok ? result.stdout.split("\n").filter(Boolean) : []);
 }
 
 export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDependencies): AutoReviewReconciler {
@@ -526,6 +571,7 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 							probe.headCommit !== null &&
 							probe.headCommit !== pendingGitAction.headCommitAtRequest;
 					if (completed && stillTracked() && (await completePendingGitAction(workspacePath, card.id, timestamp))) {
+						runtime.gitActionAttemptsByTaskId.delete(card.id);
 						boardMutated = true;
 						if (landingKnown) {
 							await cleanupLandedTask(workspace, workspacePath, card.id);
@@ -561,6 +607,22 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 					continue;
 				}
 
+				const previousAttempts = runtime.gitActionAttemptsByTaskId.get(card.id);
+				const attempts =
+					previousAttempts && previousAttempts.headCommit === probe.headCommit
+						? previousAttempts
+						: { headCommit: probe.headCommit, count: 0 };
+				if (attempts.count >= MAX_GIT_ACTION_ATTEMPTS_PER_HEAD) {
+					if (attempts.count === MAX_GIT_ACTION_ATTEMPTS_PER_HEAD) {
+						attempts.count += 1;
+						runtime.gitActionAttemptsByTaskId.set(card.id, attempts);
+						deps.warn?.(
+							`Auto-review gave up on task "${card.id}" after ${MAX_GIT_ACTION_ATTEMPTS_PER_HEAD} attempts left work unlanded; land it manually.`,
+						);
+					}
+					continue;
+				}
+
 				runtime.gitActionInFlightTaskIds.add(card.id);
 				try {
 					const armed = await armPendingGitAction(
@@ -574,6 +636,8 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 						continue;
 					}
 					boardMutated = true;
+					attempts.count += 1;
+					runtime.gitActionAttemptsByTaskId.set(card.id, attempts);
 					const triggered = await triggerGitAction({ workspace, card, effectiveAgent, templates, runtime });
 					if (!triggered && stillTracked() && (await clearPendingGitAction(workspacePath, card.id))) {
 						boardMutated = true;

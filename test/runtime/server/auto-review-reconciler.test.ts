@@ -467,6 +467,27 @@ describe("auto-review reconciler", () => {
 		expect(findCardInBoard(harness.store.stored.board, "task-1")?.card.pendingGitAction ?? null).toBeNull();
 		expect(harness.terminal.writeInput).not.toHaveBeenCalled();
 	});
+
+	it("stops re-prompting a card whose commits never land", async () => {
+		let currentTime = 1_000_000;
+		const card = createCard({ id: "task-1", autoReviewEnabled: true });
+		const harness = createHarness({ board: createBoard({ review: [card] }), now: () => currentTime });
+		harness.setProbe("task-1", { exists: true, headCommit: "commit-1", changedFiles: 0, unlandedCommits: 1 });
+
+		// Each stale window re-arms and re-prompts; the cap ends the review <-> in_progress bounce.
+		for (let cycle = 0; cycle < 6; cycle += 1) {
+			await harness.evaluate();
+			currentTime += 16 * 60_000;
+			await harness.evaluate();
+			currentTime += 1_000;
+		}
+
+		const promptCount = harness.terminal.writeInput.mock.calls.filter(
+			([, data]) => data?.toString("utf8") !== "\r",
+		).length;
+		expect(promptCount).toBe(3);
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("review");
+	});
 });
 
 function findCardInBoard(
