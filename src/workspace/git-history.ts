@@ -5,7 +5,7 @@ import type {
 	RuntimeGitRef,
 	RuntimeGitRefsResponse,
 } from "../core/api-contract";
-import { runGit } from "./git-utils";
+import { requireSafeGitArgument, runGit } from "./git-utils";
 
 const LOG_FIELD_SEPARATOR = "\x1f";
 const LOG_RECORD_SEPARATOR = "\x1e";
@@ -216,7 +216,10 @@ export async function getGitRefs(cwd: string): Promise<RuntimeGitRefsResponse> {
 
 function normalizeRequestedRefs(refs: string[] | null | undefined, fallbackRef?: string | null): string[] {
 	const candidates = refs && refs.length > 0 ? refs : fallbackRef ? [fallbackRef] : [];
-	return Array.from(new Set(candidates.map((candidate) => candidate.trim()).filter(Boolean)));
+	const normalized = Array.from(new Set(candidates.map((candidate) => candidate.trim()).filter(Boolean)));
+	// These values are appended to `git log`/`git rev-list` argv, where a leading
+	// "-" becomes an option (e.g. --output=<path>) rather than a revision.
+	return normalized.map((candidate) => requireSafeGitArgument(candidate, "git revision"));
 }
 
 async function buildCommitRelationMap(repoRoot: string, refs: string[]): Promise<Map<string, CommitRelation> | null> {

@@ -8,7 +8,7 @@ import type {
 	RuntimeGitSyncResponse,
 	RuntimeGitSyncSummary,
 } from "../core/api-contract";
-import { runGit } from "./git-utils";
+import { isSafeGitArgument, runGit } from "./git-utils";
 
 interface GitPathFingerprint {
 	path: string;
@@ -302,6 +302,18 @@ export async function runGitCheckoutAction(options: {
 			summary: initialSummary,
 			output: "",
 			error: "Branch name cannot be empty.",
+		};
+	}
+
+	// The branch is passed to `git switch` as a bare argv entry; a leading "-"
+	// would be parsed as an option (`--orphan=<name>` removes tracked files).
+	if (!isSafeGitArgument(requestedBranch)) {
+		return {
+			ok: false,
+			branch: requestedBranch,
+			summary: initialSummary,
+			output: "",
+			error: `Invalid branch name: ${JSON.stringify(requestedBranch)}`,
 		};
 	}
 

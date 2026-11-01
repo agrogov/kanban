@@ -84,11 +84,19 @@ export function isPasscodeEnabled(): boolean {
 /**
  * Revoke the current passcode and generate a new one.
  * Returns the new plaintext passcode for display.
+ *
+ * The internal CLI token is rotated too: it is a bearer credential for every
+ * `/api/` route, so leaving it valid would mean a passcode revocation does not
+ * revoke access. Already-spawned child processes keep the previous value in
+ * their environment until they exit; their hook traffic fails closed from here.
  */
 export function revokeAndRegeneratePasscode(): string {
 	sessions.clear();
 	rateLimitByIp.clear();
-	return generatePasscode();
+	internalAuthToken = null;
+	const passcode = generatePasscode();
+	generateInternalToken();
+	return passcode;
 }
 
 /**
