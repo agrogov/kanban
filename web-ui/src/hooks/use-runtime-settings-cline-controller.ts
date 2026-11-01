@@ -199,6 +199,69 @@ function getDefaultModelIdForProvider(providers: RuntimeClineProviderCatalogItem
 	);
 }
 
+type BedrockOverrides = Partial<{
+	accessKey: string;
+	secretKey: string;
+	sessionToken: string;
+	region: string;
+	profile: string;
+	authentication: "iam" | "api-key" | "profile";
+	endpoint: string;
+}>;
+
+type VertexOverrides = Partial<{ projectId: string; region: string }>;
+
+/**
+ * The provider-settings response carries no Bedrock/Vertex credentials, so these
+ * inputs always start empty even when values are stored. Sending that empty state
+ * as explicit nulls made the server delete the stored values on any unrelated
+ * save (e.g. changing only the model), so only fields the user actually filled in
+ * are sent; empty fields are omitted and keep their stored value.
+ */
+function buildBedrockOverrides(values: {
+	accessKey: string;
+	secretKey: string;
+	sessionToken: string;
+	region: string;
+	profile: string;
+	authentication: "" | "iam" | "api-key" | "profile";
+	endpoint: string;
+}): BedrockOverrides | undefined {
+	const overrides: BedrockOverrides = {};
+	const assignText = (
+		key: "accessKey" | "secretKey" | "sessionToken" | "region" | "profile" | "endpoint",
+		raw: string,
+	) => {
+		const trimmed = raw.trim();
+		if (trimmed.length > 0) {
+			overrides[key] = trimmed;
+		}
+	};
+	assignText("accessKey", values.accessKey);
+	assignText("secretKey", values.secretKey);
+	assignText("sessionToken", values.sessionToken);
+	assignText("region", values.region);
+	assignText("profile", values.profile);
+	assignText("endpoint", values.endpoint);
+	if (values.authentication !== "") {
+		overrides.authentication = values.authentication;
+	}
+	return Object.keys(overrides).length > 0 ? overrides : undefined;
+}
+
+function buildVertexOverrides(values: { projectId: string; region: string }): VertexOverrides | undefined {
+	const overrides: VertexOverrides = {};
+	const projectId = values.projectId.trim();
+	const region = values.region.trim();
+	if (projectId.length > 0) {
+		overrides.projectId = projectId;
+	}
+	if (region.length > 0) {
+		overrides.region = region;
+	}
+	return Object.keys(overrides).length > 0 ? overrides : undefined;
+}
+
 export function useRuntimeSettingsClineController(
 	options: UseRuntimeSettingsClineControllerOptions,
 ): UseRuntimeSettingsClineControllerResult {
@@ -528,24 +591,21 @@ export function useRuntimeSettingsClineController(
 				overrides && "aws" in overrides
 					? overrides.aws
 					: isBedrockProvider
-						? {
-								accessKey: awsAccessKey.trim() || null,
-								secretKey: awsSecretKey.trim() || null,
-								sessionToken: awsSessionToken.trim() || null,
-								region: awsRegion.trim() || null,
-								profile: awsProfile.trim() || null,
-								authentication: awsAuthentication || null,
-								endpoint: awsEndpoint.trim() || null,
-							}
+						? buildBedrockOverrides({
+								accessKey: awsAccessKey,
+								secretKey: awsSecretKey,
+								sessionToken: awsSessionToken,
+								region: awsRegion,
+								profile: awsProfile,
+								authentication: awsAuthentication,
+								endpoint: awsEndpoint,
+							})
 						: undefined;
 			const nextGcp =
 				overrides && "gcp" in overrides
 					? overrides.gcp
 					: isVertexProvider
-						? {
-								projectId: gcpProjectId.trim() || null,
-								region: gcpRegion.trim() || null,
-							}
+						? buildVertexOverrides({ projectId: gcpProjectId, region: gcpRegion })
 						: undefined;
 			const payloadRegion = isVertexProvider ? nextRegion : null;
 			try {
@@ -555,7 +615,9 @@ export function useRuntimeSettingsClineController(
 					baseUrl: trimmedBaseUrl,
 					reasoningEffort: parseRuntimeClineReasoningEffort(nextReasoningEffort),
 					...(trimmedApiKey !== undefined ? { apiKey: trimmedApiKey } : {}),
-					...(isVertexProvider ? { region: payloadRegion } : {}),
+					// Same reasoning as the aws/gcp blocks: an empty Vertex region means
+					// "not edited", not "clear the stored region".
+					...(isVertexProvider && payloadRegion ? { region: payloadRegion } : {}),
 					...(nextAws !== undefined ? { aws: nextAws } : {}),
 					...(nextGcp !== undefined ? { gcp: nextGcp } : {}),
 				});

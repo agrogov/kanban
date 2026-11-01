@@ -162,8 +162,13 @@ export function useRuntimeSettingsClineMcpController(
 
 		let cancelled = false;
 		setIsLoadingMcpSettings(true);
-		void Promise.all([fetchClineMcpSettings(workspaceId), fetchClineMcpAuthStatuses(workspaceId)])
-			.then(([settingsResponse, authResponse]) => {
+		// Settings and OAuth statuses are independent endpoints. Joining them with a
+		// single catch meant a failure of the status query (which additionally parses
+		// the OAuth state file) erased a successfully loaded server list — and the next
+		// save then rewrote cline_mcp_settings.json containing only the new server.
+		void (async () => {
+			try {
+				const settingsResponse = await fetchClineMcpSettings(workspaceId);
 				if (cancelled) {
 					return;
 				}
@@ -171,24 +176,32 @@ export function useRuntimeSettingsClineMcpController(
 				setMcpSettingsPath(settingsResponse.path);
 				setMcpServers(nextServers);
 				setInitialMcpServers(nextServers);
-				setMcpAuthStatusByServerName(
-					Object.fromEntries(authResponse.statuses.map((status) => [status.serverName, status] as const)),
-				);
-			})
-			.catch(() => {
+			} catch {
 				if (cancelled) {
 					return;
 				}
 				setMcpSettingsPath("");
 				setMcpServers([]);
 				setInitialMcpServers([]);
-				setMcpAuthStatusByServerName({});
-			})
-			.finally(() => {
+			} finally {
 				if (!cancelled) {
 					setIsLoadingMcpSettings(false);
 				}
-			});
+			}
+
+			try {
+				const authResponse = await fetchClineMcpAuthStatuses(workspaceId);
+				if (cancelled) {
+					return;
+				}
+				setMcpAuthStatusByServerName(
+					Object.fromEntries(authResponse.statuses.map((status) => [status.serverName, status] as const)),
+				);
+			} catch {
+				// Keep whatever statuses are already known; staleness is recoverable,
+				// losing the server list is not.
+			}
+		})();
 
 		return () => {
 			cancelled = true;
