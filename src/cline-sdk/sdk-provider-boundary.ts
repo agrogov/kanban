@@ -30,6 +30,7 @@ import {
 	loginOcaOAuth,
 	loginOpenAICodex,
 	type OcaOAuthProviderOptions,
+	type ProviderCapability,
 	type ProviderSettings,
 	ProviderSettingsManager,
 	resolveProviderConfig,
@@ -67,6 +68,11 @@ export interface SdkProviderCatalogItem {
 	defaultModelId?: string;
 	baseUrl?: string;
 	env?: string[];
+	/**
+	 * Raw SDK catalog vocabulary, which is wider than what Kanban persists for custom providers
+	 * (it also carries `oauth`, `files`, `computer-use`, ...). Narrow it with the dialog list before
+	 * showing or storing it.
+	 */
 	capabilities?: string[];
 }
 
@@ -85,7 +91,20 @@ export interface SdkUserRemoteConfigResponse {
 }
 
 export type SdkProviderSettings = ProviderSettings;
-export type SdkCustomProviderCapability = "streaming" | "tools" | "reasoning" | "vision" | "prompt-cache";
+
+/**
+ * The subset of the SDK provider capability vocabulary that Kanban lets users edit for an
+ * OpenAI-compatible custom provider, and the only list `models.json` persists. Deriving the type
+ * from this constant keeps the stored, transported and rendered vocabularies in one place.
+ */
+export const SDK_CUSTOM_PROVIDER_CAPABILITIES = [
+	"streaming",
+	"tools",
+	"reasoning",
+	"vision",
+	"prompt-cache",
+] as const satisfies readonly ProviderCapability[];
+export type SdkCustomProviderCapability = (typeof SDK_CUSTOM_PROVIDER_CAPABILITIES)[number];
 
 export interface SaveSdkProviderSettingsInput {
 	settings: SdkProviderSettings;
@@ -411,6 +430,10 @@ function resolveModelsPath(): string {
 	return join(dirname(providerManager.getFilePath()), "models.json");
 }
 
+function isMissingFileError(error: unknown): boolean {
+	return (error as NodeJS.ErrnoException | null)?.code === "ENOENT";
+}
+
 async function readModelsRegistry(): Promise<LocalModelsFile> {
 	try {
 		const raw = await readFile(resolveModelsPath(), "utf8");
@@ -418,28 +441,50 @@ async function readModelsRegistry(): Promise<LocalModelsFile> {
 		if (parsed.version === 1 && parsed.providers && typeof parsed.providers === "object") {
 			return { version: 1, providers: parsed.providers };
 		}
-	} catch {
-		// Fall through.
+		return { version: 1, providers: {} };
+	} catch (error) {
+		if (isMissingFileError(error)) {
+			// No custom provider has been saved yet; that is an empty registry, not a failure.
+			return { version: 1, providers: {} };
+		}
+		// Anything else (permissions, transient I/O, corrupt JSON) must stay visible: callers treat an
+		// empty registry as "nothing was saved", which silently drops the user's configuration.
+		throw new Error(`Could not read the custom provider registry at ${resolveModelsPath()}.`, { cause: error });
 	}
-	return { version: 1, providers: {} };
 }
 
 async function writeModelsRegistry(state: LocalModelsFile): Promise<void> {
 	await writeFile(resolveModelsPath(), `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
+/**
+ * Saved custom-provider capabilities keyed by normalized provider id.
+ *
+ * Provider ids are case-insensitive across the app (the setup dialog and the tRPC edge both
+ * lowercase them), but `models.json` keys are whatever the SDK wrote. Normalizing here keeps a
+ * mixed-case entry from looking capability-less when the catalog compares raw ids.
+ */
 export async function readSdkCustomProviderCapabilities(): Promise<Record<string, SdkCustomProviderCapability[]>> {
 	const state = await readModelsRegistry();
-	return Object.fromEntries(
-		Object.entries(state.providers).flatMap(([providerId, entry]) =>
-			entry.provider?.capabilities ? [[providerId, entry.provider.capabilities] as const] : [],
-		),
-	);
+	const capabilitiesByProviderId = new Map<string, SdkCustomProviderCapability[]>();
+	for (const [providerId, entry] of Object.entries(state.providers)) {
+		const capabilities = entry.provider?.capabilities;
+		if (!capabilities?.length) {
+			continue;
+		}
+		capabilitiesByProviderId.set(normalizeCustomProviderId(providerId), capabilities);
+	}
+	return Object.fromEntries(capabilitiesByProviderId);
+}
+
+function normalizeCustomProviderId(providerId: string): string {
+	return providerId.trim().toLowerCase();
 }
 
 export async function addSdkCustomProvider(input: AddSdkCustomProviderInput): Promise<void> {
 	await addLocalProvider(providerManager, {
-		providerId: input.providerId,
+		// Provider ids are case-insensitive everywhere else, so store the canonical form.
+		providerId: normalizeCustomProviderId(input.providerId),
 		name: input.name,
 		baseUrl: input.baseUrl,
 		apiKey: input.apiKey ?? undefined,

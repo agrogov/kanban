@@ -709,6 +709,15 @@ export const runtimeFeaturebaseTokenResponseSchema = z.object({
 });
 export type RuntimeFeaturebaseTokenResponse = z.infer<typeof runtimeFeaturebaseTokenResponseSchema>;
 
+export const runtimeClineProviderCapabilitySchema = z.enum([
+	"streaming",
+	"tools",
+	"reasoning",
+	"vision",
+	"prompt-cache",
+]);
+export type RuntimeClineProviderCapability = z.infer<typeof runtimeClineProviderCapabilitySchema>;
+
 export const runtimeClineProviderCatalogItemSchema = z.object({
 	id: z.string(),
 	name: z.string(),
@@ -718,7 +727,7 @@ export const runtimeClineProviderCatalogItemSchema = z.object({
 	baseUrl: z.string().nullable(),
 	supportsBaseUrl: z.boolean(),
 	env: z.array(z.string()).optional(),
-	capabilities: z.array(z.lazy(() => runtimeClineProviderCapabilitySchema)).optional(),
+	capabilities: z.array(runtimeClineProviderCapabilitySchema).optional(),
 });
 export type RuntimeClineProviderCatalogItem = z.infer<typeof runtimeClineProviderCatalogItemSchema>;
 
@@ -746,15 +755,6 @@ export const runtimeClineProviderModelsResponseSchema = z.object({
 	models: z.array(runtimeClineProviderModelSchema),
 });
 export type RuntimeClineProviderModelsResponse = z.infer<typeof runtimeClineProviderModelsResponseSchema>;
-
-export const runtimeClineProviderCapabilitySchema = z.enum([
-	"streaming",
-	"tools",
-	"reasoning",
-	"vision",
-	"prompt-cache",
-]);
-export type RuntimeClineProviderCapability = z.infer<typeof runtimeClineProviderCapabilitySchema>;
 
 export const runtimeClineAddProviderRequestSchema = z.object({
 	providerId: z.string(),

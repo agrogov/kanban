@@ -26,6 +26,7 @@ vi.mock("../../../src/cline-sdk/sdk-provider-boundary", () => ({
 	saveSdkProviderSettings: mocks.saveSdkProviderSettings,
 	SDK_DEFAULT_MODEL_ID: "anthropic/claude-sonnet-4.6",
 	SDK_DEFAULT_PROVIDER_ID: "cline",
+	SDK_CUSTOM_PROVIDER_CAPABILITIES: ["streaming", "tools", "reasoning", "vision", "prompt-cache"],
 }));
 
 vi.mock("../../../src/server/browser", () => ({
@@ -143,5 +144,50 @@ describe("ensureSdkCustomProvidersLoaded call ordering", () => {
 		await service.getProviderCatalog();
 
 		expect(mocks.ensureCustomProvidersLoaded).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("custom provider capabilities in the catalog", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mocks.ensureCustomProvidersLoaded.mockResolvedValue(undefined);
+		mocks.listSdkProviderModels.mockResolvedValue([]);
+		mocks.getSdkProviderSettings.mockReturnValue(undefined);
+		mocks.getLastUsedSdkProviderSettings.mockReturnValue(undefined);
+		mocks.refreshManagedOauthCredentials.mockResolvedValue(null);
+		mocks.saveSdkProviderSettings.mockReturnValue(undefined);
+	});
+
+	it("prefers the saved capability list over the SDK catalog, matching ids case-insensitively", async () => {
+		// The SDK catalog drops streaming/vision from custom providers.
+		mocks.listSdkProviderCatalog.mockResolvedValue([{ id: "Custom-GW", name: "Custom GW", capabilities: ["tools"] }]);
+		mocks.readSdkCustomProviderCapabilities.mockResolvedValue({
+			"custom-gw": ["streaming", "tools", "vision"],
+		});
+
+		const service = createClineProviderService();
+		const catalog = await service.getProviderCatalog();
+
+		expect(catalog.providers.find((provider) => provider.id === "Custom-GW")?.capabilities).toEqual([
+			"streaming",
+			"tools",
+			"vision",
+		]);
+	});
+
+	it("still renders the catalog when the saved capability list cannot be read", async () => {
+		mocks.listSdkProviderCatalog.mockResolvedValue([
+			{ id: "custom-gw", name: "Custom GW", capabilities: ["streaming", "tools"] },
+		]);
+		mocks.readSdkCustomProviderCapabilities.mockRejectedValue(new Error("EACCES: permission denied"));
+
+		const service = createClineProviderService();
+		const catalog = await service.getProviderCatalog();
+
+		// Falls back to the SDK list rather than failing the whole catalog read.
+		expect(catalog.providers.find((provider) => provider.id === "custom-gw")?.capabilities).toEqual([
+			"streaming",
+			"tools",
+		]);
 	});
 });

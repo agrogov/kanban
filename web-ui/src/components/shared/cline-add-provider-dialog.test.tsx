@@ -200,4 +200,49 @@ describe("ClineAddProviderDialog", () => {
 			}),
 		);
 	});
+
+	it("shows an explicitly empty saved capability list as unselected when editing", async () => {
+		const onSubmit = vi.fn(async () => ({ ok: true }));
+
+		await act(async () => {
+			root.render(
+				<ClineAddProviderDialog
+					open={true}
+					onOpenChange={() => {}}
+					existingProviderIds={[]}
+					mode="edit"
+					initialValues={{
+						providerId: "custom-gw",
+						name: "Custom GW",
+						baseUrl: "http://localhost:8000/v1",
+						models: ["qwen2.5-coder:32b"],
+						capabilities: [],
+					}}
+					onSubmit={onSubmit}
+				/>,
+			);
+		});
+
+		// Defaults must not leak into an edit of a provider whose saved list is empty.
+		const streamingButton = findButtonByText(document.body, "streaming");
+		const toolsButton = findButtonByText(document.body, "tools");
+		const visionButton = findButtonByText(document.body, "vision");
+		expect(streamingButton?.getAttribute("aria-pressed")).toBe("false");
+		expect(toolsButton?.getAttribute("aria-pressed")).toBe("false");
+
+		await act(async () => {
+			visionButton?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			visionButton?.click();
+		});
+
+		const saveButton = findButtonByText(document.body, "Update provider");
+		expect(saveButton?.disabled).toBe(false);
+
+		await act(async () => {
+			saveButton?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			saveButton?.click();
+		});
+
+		expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ capabilities: ["vision"] }));
+	});
 });

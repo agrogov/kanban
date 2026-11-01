@@ -43,6 +43,7 @@ import {
 	readSdkCustomProviderCapabilities,
 	refreshManagedOauthCredentials,
 	resolveSdkLaunchProviderId,
+	SDK_CUSTOM_PROVIDER_CAPABILITIES,
 	SDK_DEFAULT_MODEL_ID,
 	SDK_DEFAULT_PROVIDER_ID,
 	type SdkCustomProviderCapability,
@@ -232,12 +233,14 @@ function hasOauthRefreshToken(settings: SdkProviderSettings | null): boolean {
 	return (settings?.auth?.refreshToken?.trim() ?? "").length > 0;
 }
 
-const DIALOG_CAPABILITIES = ["streaming", "tools", "reasoning", "vision", "prompt-cache"] as const;
-
+/**
+ * Narrows any capability list (SDK catalog or `models.json`) to the ones the setup dialog can
+ * render. The canonical vocabulary comes from the provider boundary, not a local copy.
+ */
 function toDialogCapabilities(
 	capabilities: readonly string[] | undefined,
 ): RuntimeClineProviderCapability[] | undefined {
-	const known = DIALOG_CAPABILITIES.filter((capability) => capabilities?.includes(capability));
+	const known = SDK_CUSTOM_PROVIDER_CAPABILITIES.filter((capability) => capabilities?.includes(capability));
 	return known.length > 0 ? known : undefined;
 }
 
@@ -852,7 +855,15 @@ export function createClineProviderService() {
 			const selectedProviderId = getProviderSettingsSummary().providerId?.trim().toLowerCase() ?? "";
 			// The SDK catalog drops streaming/vision from custom providers, so read the saved list from models.json.
 			const customCapabilities = await readSdkCustomProviderCapabilities().catch(
-				(): Record<string, string[]> => ({}),
+				(error: unknown): Record<string, SdkCustomProviderCapability[]> => {
+					// A failed read is not "this provider has no capabilities": the dialog would then show
+					// fewer than are saved. Keep the catalog working, but leave a trail for the missing list.
+					LOGGER.log("Could not read saved custom provider capabilities; falling back to the SDK catalog.", {
+						severity: "warn",
+						error: toErrorMessage(error),
+					});
+					return {};
+				},
 			);
 			const providers: RuntimeClineProviderCatalogItem[] = await listSdkProviderCatalog()
 				.then((sdkProviders) =>
@@ -867,7 +878,9 @@ export function createClineProviderService() {
 							baseUrl: provider.baseUrl?.trim() || null,
 							supportsBaseUrl: (provider.baseUrl?.trim().length ?? 0) > 0,
 							env: provider.env,
-							capabilities: toDialogCapabilities(customCapabilities[provider.id] ?? provider.capabilities),
+							capabilities: toDialogCapabilities(
+								customCapabilities[provider.id.trim().toLowerCase()] ?? provider.capabilities,
+							),
 						}))
 						.sort((left, right) => {
 							if (left.id === "cline") {

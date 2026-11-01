@@ -16,6 +16,9 @@ const CAPABILITY_OPTIONS: readonly RuntimeClineProviderCapability[] = [
 	"prompt-cache",
 ];
 
+/** What a brand-new provider starts with; also the fallback when no saved list exists. */
+const DEFAULT_CAPABILITIES: readonly RuntimeClineProviderCapability[] = ["streaming", "tools"];
+
 interface HeaderEntry {
 	id: string;
 	key: string;
@@ -74,7 +77,9 @@ function createInitialFormState(initialValues?: ClineProviderDialogInitialValues
 		defaultModelId: initialValues?.defaultModelId?.trim() || initialModels[0] || "",
 		timeoutMs: initialValues?.timeoutMs ? String(initialValues.timeoutMs) : "",
 		headers: initialHeaders,
-		capabilities: initialValues?.capabilities?.length ? initialValues.capabilities : ["streaming", "tools"],
+		// A missing list means "never configured", so show the defaults. An explicitly empty list is a
+		// saved state: showing defaults there would silently re-add capabilities the user removed.
+		capabilities: [...(initialValues ? (initialValues.capabilities ?? DEFAULT_CAPABILITIES) : DEFAULT_CAPABILITIES)],
 	};
 }
 
