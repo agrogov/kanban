@@ -80,7 +80,7 @@ export interface CreateRuntimeServerDependencies {
 		},
 	) => DisposeTrackedWorkspaceResult;
 	collectProjectWorktreeTaskIdsForRemoval: (board: RuntimeWorkspaceStateResponse["board"]) => Set<string>;
-	pickDirectoryPathFromSystemDialog: () => string | null;
+	pickDirectoryPathFromSystemDialog: () => Promise<string | null>;
 	getUpdateStatus: () => RuntimeUpdateStatusResponse;
 	runUpdateNow: () => Promise<RuntimeRunUpdateResponse>;
 }

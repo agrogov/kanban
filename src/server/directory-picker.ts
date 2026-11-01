@@ -1,4 +1,5 @@
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 interface DirectoryPickerCommandCandidate {
 	command: string;
@@ -10,7 +11,22 @@ type DirectoryPickerCommandResult =
 	| { kind: "cancelled" }
 	| { kind: "unavailable" };
 
-type RunCommand = (command: string, args: string[]) => ReturnType<typeof spawnSync>;
+/** The subset of a child-process result this module acts on. */
+export interface DirectoryPickerProcessResult {
+	stdout: string;
+	stderr: string;
+	status: number | null;
+	signal: NodeJS.Signals | null;
+	error?: Error;
+}
+
+type RunCommand = (command: string, args: string[]) => Promise<DirectoryPickerProcessResult>;
+
+const execFileAsync = promisify(execFile);
+
+function createSpawnResultFromExec(input: DirectoryPickerProcessResult): DirectoryPickerProcessResult {
+	return input;
+}
 
 interface PickDirectoryPathFromSystemDialogOptions {
 	platform?: NodeJS.Platform;
@@ -35,18 +51,37 @@ function parseChildProcessErrorCode(error: unknown): string | null {
 	return typeof code === "string" ? code : null;
 }
 
-function defaultRunCommand(command: string, args: string[]): ReturnType<typeof spawnSync> {
-	return spawnSync(command, args, {
-		encoding: "utf8",
-		stdio: ["ignore", "pipe", "pipe"],
-	});
+/**
+ * The picker child lives until a human dismisses the modal dialog, so it must not
+ * be spawned synchronously: this runs on the runtime server's event loop, and
+ * blocking it freezes terminal output and every other RPC for as long as the
+ * dialog stays open.
+ */
+async function defaultRunCommand(command: string, args: string[]): Promise<DirectoryPickerProcessResult> {
+	try {
+		const { stdout, stderr } = await execFileAsync(command, args, { encoding: "utf8" });
+		return createSpawnResultFromExec({ stdout, stderr, status: 0, signal: null });
+	} catch (error) {
+		const execError = error as NodeJS.ErrnoException & {
+			signal?: NodeJS.Signals | null;
+			stdout?: string;
+			stderr?: string;
+		};
+		return createSpawnResultFromExec({
+			stdout: execError.stdout ?? "",
+			stderr: execError.stderr ?? "",
+			status: typeof execError.code === "number" ? execError.code : null,
+			signal: execError.signal ?? null,
+			error: execError,
+		});
+	}
 }
 
-function runDirectoryPickerCommand(
+async function runDirectoryPickerCommand(
 	candidate: DirectoryPickerCommandCandidate,
 	runCommand: RunCommand,
-): DirectoryPickerCommandResult {
-	const result = runCommand(candidate.command, candidate.args);
+): Promise<DirectoryPickerCommandResult> {
+	const result = await runCommand(candidate.command, candidate.args);
 
 	const errorCode = parseChildProcessErrorCode(result.error);
 	if (errorCode === "ENOENT") {
@@ -82,15 +117,15 @@ function runDirectoryPickerCommand(
 	return { kind: "selected", path: selectedPath };
 }
 
-export function pickDirectoryPathFromSystemDialog(
+export async function pickDirectoryPathFromSystemDialog(
 	options: PickDirectoryPathFromSystemDialogOptions = {},
-): string | null {
+): Promise<string | null> {
 	const platform = options.platform ?? process.platform;
 	const cwd = options.cwd ?? process.cwd();
 	const runCommand = options.runCommand ?? defaultRunCommand;
 
 	if (platform === "darwin") {
-		const result = runDirectoryPickerCommand(
+		const result = await runDirectoryPickerCommand(
 			{
 				command: "osascript",
 				args: ["-e", 'POSIX path of (choose folder with prompt "Select a project folder")'],
@@ -119,7 +154,7 @@ export function pickDirectoryPathFromSystemDialog(
 		];
 
 		for (const candidate of candidates) {
-			const result = runDirectoryPickerCommand(candidate, runCommand);
+			const result = await runDirectoryPickerCommand(candidate, runCommand);
 			if (result.kind === "unavailable") {
 				continue;
 			}
@@ -145,7 +180,7 @@ export function pickDirectoryPathFromSystemDialog(
 		];
 
 		for (const candidate of candidates) {
-			const result = runDirectoryPickerCommand(candidate, runCommand);
+			const result = await runDirectoryPickerCommand(candidate, runCommand);
 			if (result.kind === "unavailable") {
 				continue;
 			}
