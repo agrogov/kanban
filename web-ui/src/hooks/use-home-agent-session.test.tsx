@@ -377,6 +377,34 @@ describe("useHomeAgentSession", () => {
 		);
 	});
 
+	it.each(["claude-chat", "codex-chat", "pi-chat"] as const)(
+		"renders %s chat views in the sidebar instead of the terminal panel",
+		async (agentId) => {
+			let latestSnapshot: HookSnapshot | null = null;
+
+			await act(async () => {
+				root.render(
+					<HookHarness
+						config={createRuntimeConfig({
+							selectedAgentId: agentId,
+							// Chat views have no CLI command; the terminal branch bails out on this.
+							effectiveCommand: undefined,
+						})}
+						currentProjectId="workspace-1"
+						onSnapshot={(snapshot) => {
+							latestSnapshot = snapshot;
+						}}
+					/>,
+				);
+				await createFlushPromises();
+			});
+
+			const snapshot = requireSnapshot(latestSnapshot);
+			expect(snapshot.panelMode).toBe("chat");
+			expect(snapshot.taskId).toBe(`__home_agent__:workspace-1:${agentId}`);
+		},
+	);
+
 	it("keeps the same cline home chat session id when the provider changes", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 

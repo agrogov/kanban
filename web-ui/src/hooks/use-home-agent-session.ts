@@ -8,7 +8,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useMemo, useRef } from "react";
 
 import { notifyError } from "@/components/app-toaster";
-import { getRuntimeClineProviderSettings, isNativeClineAgentSelected } from "@/runtime/native-agent";
+import { getRuntimeClineProviderSettings, isNativeChatAgentSelected } from "@/runtime/native-agent";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeConfigResponse, RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -137,7 +137,11 @@ export function useHomeAgentSession({
 
 		let panelMode: HomeAgentPanelMode;
 		let descriptorKey: string;
-		if (isNativeClineAgentSelected(runtimeProjectConfig.selectedAgentId)) {
+		// Chat mode covers every native-chat agent (embedded Cline plus the Claude,
+		// Codex and Pi chat views). Keying on `isNativeClineAgentSelected` sent those
+		// three into the terminal branch, which bails out on the missing
+		// `effectiveCommand` and leaves the sidebar with no session at all.
+		if (isNativeChatAgentSelected(runtimeProjectConfig.selectedAgentId)) {
 			panelMode = "chat";
 			descriptorKey = buildClineDescriptor(runtimeProjectConfig);
 		} else {
