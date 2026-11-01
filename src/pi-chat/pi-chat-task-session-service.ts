@@ -3,6 +3,7 @@
 // ClineTaskSessionService surface the chat UI already consumes for Cline, Claude and Codex.
 
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { type Api, isModelType, type Model } from "@earendil-works/pi-ai";
@@ -11,6 +12,7 @@ import {
 	type AgentSessionEvent,
 	type CreateAgentSessionOptions,
 	createAgentSession,
+	getAgentDir,
 	ModelRuntime,
 	SessionManager,
 } from "@earendil-works/pi-coding-agent";
@@ -95,6 +97,7 @@ export function buildPiSessionOptions(
 export function selectPiChatModel<T extends { provider: string; id: string }>(
 	availableModels: readonly T[],
 	modelId: string | null,
+	fallbackModelId: string | null = null,
 ): T | null {
 	if (availableModels.length === 0) {
 		// `getAvailableSnapshot()` reports built-in providers with credentials only; the
@@ -105,17 +108,45 @@ export function selectPiChatModel<T extends { provider: string; id: string }>(
 			"Pi has no models configured. Add a provider to ~/.pi/agent/models.json (or run the `pi` CLI once) and retry.",
 		);
 	}
-	if (!modelId) {
-		return null;
-	}
 	// Same convention as `pi --model`: "provider/id" or a bare model id.
-	const model = availableModels.find(
-		(candidate) => `${candidate.provider}/${candidate.id}` === modelId || candidate.id === modelId,
-	);
+	const findModel = (candidateId: string): T | undefined =>
+		availableModels.find(
+			(candidate) => `${candidate.provider}/${candidate.id}` === candidateId || candidate.id === candidateId,
+		);
+	if (!modelId) {
+		// No model was requested: honour pi's own default (settings.json) instead of
+		// leaving it to the SDK, which would pick an unrelated built-in model.
+		return fallbackModelId ? (findModel(fallbackModelId) ?? null) : null;
+	}
+	const model = findModel(modelId);
 	if (!model) {
-		throw new Error(`Pi model "${modelId}" is not available. Check your Pi credentials.`);
+		throw new Error(`Pi model "${modelId}" is not available. Check your Pi configuration.`);
 	}
 	return model;
+}
+
+/**
+ * The default model the `pi` CLI itself would pick, from its settings file
+ * (`defaultProvider` / `defaultModel`). Kanban must apply it explicitly: creating
+ * a session without a model lets the SDK fall back to a built-in model, which is
+ * not what the user configured.
+ */
+export async function readPiDefaultModel(agentDir: string = getAgentDir()): Promise<string | null> {
+	try {
+		const raw = await readFile(join(agentDir, "settings.json"), "utf8");
+		const parsed: unknown = JSON.parse(raw);
+		if (!parsed || typeof parsed !== "object") {
+			return null;
+		}
+		const provider = (parsed as { defaultProvider?: unknown }).defaultProvider;
+		const model = (parsed as { defaultModel?: unknown }).defaultModel;
+		if (typeof provider !== "string" || typeof model !== "string" || !provider.trim() || !model.trim()) {
+			return null;
+		}
+		return `${provider.trim()}/${model.trim()}`;
+	} catch {
+		return null;
+	}
 }
 
 const createSdkSession: CreatePiChatSession = async (settings) => {
@@ -131,7 +162,7 @@ const createSdkSession: CreatePiChatSession = async (settings) => {
 	const chatModels: Model<Api>[] = modelRuntime
 		.getAllModels()
 		.filter((candidate): candidate is Model<Api> => isModelType(candidate, "chat"));
-	const model = selectPiChatModel(chatModels, settings.modelId);
+	const model = selectPiChatModel(chatModels, settings.modelId, await readPiDefaultModel());
 	if (model) {
 		options.modelRuntime = modelRuntime;
 		options.model = model;

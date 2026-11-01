@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
@@ -10,6 +10,7 @@ import {
 	createPiChatTaskSessionService,
 	type PiChatSession,
 	type PiSessionSettings,
+	readPiDefaultModel,
 	selectPiChatModel,
 } from "../../../src/pi-chat/pi-chat-task-session-service";
 
@@ -200,5 +201,40 @@ describe("selectPiChatModel", () => {
 
 	it("rejects a model that is not available", () => {
 		expect(() => selectPiChatModel(models, "anthropic/claude-opus-9")).toThrow(/not available/i);
+	});
+});
+
+describe("readPiDefaultModel", () => {
+	it("reads pi's own default provider/model from settings.json", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "pi-default-"));
+		try {
+			await writeFile(
+				join(dir, "settings.json"),
+				JSON.stringify({ defaultProvider: "strata", defaultModel: "qwen-flash" }),
+			);
+			expect(await readPiDefaultModel(dir)).toBe("strata/qwen-flash");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("returns null when pi has no default configured", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "pi-default-"));
+		try {
+			await writeFile(join(dir, "settings.json"), JSON.stringify({}));
+			expect(await readPiDefaultModel(dir)).toBeNull();
+			expect(await readPiDefaultModel(join(dir, "missing"))).toBeNull();
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("falls back to pi's default when no model was requested", () => {
+		const models = [
+			{ provider: "strata", id: "qwen-flash" },
+			{ provider: "openai", id: "gpt-6" },
+		];
+		expect(selectPiChatModel(models, null, "strata/qwen-flash")).toEqual(models[0]);
+		expect(selectPiChatModel(models, null, "strata/unknown")).toBeNull();
 	});
 });
