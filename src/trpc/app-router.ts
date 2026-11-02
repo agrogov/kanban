@@ -6,6 +6,8 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import type {
+	RuntimeChatAgentModelsRequest,
+	RuntimeChatAgentModelsResponse,
 	RuntimeClineAccountBalanceResponse,
 	RuntimeClineAccountOrganizationsResponse,
 	RuntimeClineAccountProfileResponse,
@@ -97,6 +99,8 @@ import type {
 	RuntimeWorktreeEnsureResponse,
 } from "../core/api-contract";
 import {
+	runtimeChatAgentModelsRequestSchema,
+	runtimeChatAgentModelsResponseSchema,
 	runtimeClineAccountBalanceResponseSchema,
 	runtimeClineAccountOrganizationsResponseSchema,
 	runtimeClineAccountProfileResponseSchema,
@@ -264,6 +268,10 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcWorkspaceScope | null,
 			input: RuntimeClineAccountSwitchRequest,
 		) => Promise<RuntimeClineAccountSwitchResponse>;
+		getChatAgentModels: (
+			scope: RuntimeTrpcWorkspaceScope | null,
+			input: RuntimeChatAgentModelsRequest,
+		) => Promise<RuntimeChatAgentModelsResponse>;
 		getClineProviderModels: (
 			scope: RuntimeTrpcWorkspaceScope | null,
 			input: RuntimeClineProviderModelsRequest,
@@ -537,6 +545,12 @@ export const runtimeAppRouter = t.router({
 			.output(runtimeClineAccountSwitchResponseSchema)
 			.mutation(async ({ ctx, input }) => {
 				return await ctx.runtimeApi.switchClineAccount(ctx.workspaceScope, input);
+			}),
+		getChatAgentModels: t.procedure
+			.input(runtimeChatAgentModelsRequestSchema)
+			.output(runtimeChatAgentModelsResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.runtimeApi.getChatAgentModels(ctx.workspaceScope, input);
 			}),
 		getClineProviderModels: t.procedure
 			.input(runtimeClineProviderModelsRequestSchema)

@@ -22,14 +22,18 @@ import {
 	getClineReasoningEnabledModelIds,
 } from "@/components/detail-panels/cline-model-picker-options";
 import { ClineThinkingIndicator } from "@/components/detail-panels/cline-thinking-indicator";
+import type { SearchSelectOption } from "@/components/search-select-dropdown";
 import { Button } from "@/components/ui/button";
 import { Link } from "@/components/ui/link";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Spinner } from "@/components/ui/spinner";
 import { useClineChatPanelController } from "@/hooks/use-cline-chat-panel-controller";
 import type { ClineChatActionResult } from "@/hooks/use-cline-chat-runtime-actions";
 import type { ClineChatMessage } from "@/hooks/use-cline-chat-session";
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
+import { fetchChatAgentModels } from "@/runtime/runtime-config-query";
 import type {
+	RuntimeAgentId,
 	RuntimeClineReasoningEffort,
 	RuntimeConfigResponse,
 	RuntimeTaskAgentSettings,
@@ -90,6 +94,12 @@ export interface ClineAgentChatPanelProps {
 	taskAgentSettings?: RuntimeTaskAgentSettings;
 	taskHasExplicitAgentSettings?: boolean;
 	showModelPicker?: boolean;
+	/** Non-Cline chat agent whose models come from its provider catalog. */
+	chatAgentId?: RuntimeAgentId | null;
+	chatAgentModelId?: string | null;
+	onChatAgentModelChange?: (modelId: string | null) => void;
+	chatAgentReasoningEffort?: string | null;
+	onChatAgentReasoningEffortChange?: (effort: string | null) => void;
 	onAgentSettingsSaved?: () => void;
 	onTaskAgentSettingsChanged?: (settings: { providerId: string; modelId: string; reasoningEffort: string }) => void;
 	onSendMessage?: (
@@ -126,6 +136,11 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 			taskAgentSettings,
 			taskHasExplicitAgentSettings = false,
 			showModelPicker = true,
+			chatAgentId,
+			chatAgentModelId = null,
+			onChatAgentModelChange,
+			chatAgentReasoningEffort = null,
+			onChatAgentReasoningEffortChange,
 			onAgentSettingsSaved,
 			onTaskAgentSettingsChanged,
 			onSendMessage,
@@ -179,6 +194,80 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 		const modeByTaskIdRef = useRef<Map<string, RuntimeTaskSessionMode>>(new Map());
 		const [composerError, setComposerError] = useState<string | null>(null);
 		const [isSavingModel, setIsSavingModel] = useState(false);
+		const [chatAgentModelOptions, setChatAgentModelOptions] = useState<SearchSelectOption[] | null>(null);
+		// The displayed choice is owned here so it updates on click: the persisted
+		// prop round-trips through the board/config and lags by a render.
+		const [chatSelection, setChatSelection] = useState<{ modelId: string | null; effort: string | null }>({
+			modelId: chatAgentModelId ?? null,
+			effort: chatAgentReasoningEffort ?? null,
+		});
+		// Reset only when the agent changes. A null prop must not wipe a choice the
+		// user just made: the write path (board/runtime config) can lag or drop it,
+		// and that made the button lose the effort it had just been given.
+		const chatAgentIdRef = useRef(chatAgentId);
+		useEffect(() => {
+			if (chatAgentIdRef.current === chatAgentId) {
+				return;
+			}
+			chatAgentIdRef.current = chatAgentId;
+			setChatSelection({ modelId: chatAgentModelId ?? null, effort: chatAgentReasoningEffort ?? null });
+		}, [chatAgentId, chatAgentModelId, chatAgentReasoningEffort]);
+		// A non-null prop is authoritative (external change, session reload).
+		useEffect(() => {
+			setChatSelection((current) => ({
+				modelId: chatAgentModelId ?? current.modelId,
+				effort: chatAgentReasoningEffort ?? current.effort,
+			}));
+		}, [chatAgentModelId, chatAgentReasoningEffort]);
+		// The composer enables the reasoning column only when the *selected* model is
+		// reasoning-capable. A chat agent starts with no explicit selection, so seed it
+		// with the agent's effective model — otherwise the effort column stays disabled
+		// and no effort can ever be chosen or displayed.
+		useEffect(() => {
+			const fallbackModelId = chatAgentModelOptions?.[0]?.value;
+			if (!fallbackModelId) {
+				return;
+			}
+			setChatSelection((current) => (current.modelId ? current : { ...current, modelId: fallbackModelId }));
+		}, [chatAgentModelOptions]);
+		const chatModelLabel = useMemo(() => {
+			const label =
+				chatAgentModelOptions?.find((option) => option.value === chatSelection.modelId)?.label ??
+				chatAgentModelOptions?.[0]?.label ??
+				"Default model";
+			const effort = chatSelection.effort;
+			if (!effort) {
+				return label;
+			}
+			const effortLabel = effort === "xhigh" ? "Extra high" : effort.charAt(0).toUpperCase() + effort.slice(1);
+			return `${label} (${effortLabel})`;
+		}, [chatAgentModelOptions, chatSelection]);
+		useEffect(() => {
+			if (!chatAgentId || chatAgentId === "cline") {
+				setChatAgentModelOptions(null);
+				return;
+			}
+			let cancelled = false;
+			void fetchChatAgentModels(workspaceId ?? null, chatAgentId)
+				.then((response) => {
+					if (!cancelled) {
+						// Same composer control as the Cline agent: the picker belongs in the
+						// toolbar row, not in a separate strip above the composer.
+						// Only the current agent's catalog is shown. A leftover model from a
+						// previously selected agent must not be injected here, or the label
+						// keeps advertising another agent's model.
+						setChatAgentModelOptions(response.models.map((model) => ({ value: model.id, label: model.label })));
+					}
+				})
+				.catch(() => {
+					if (!cancelled) {
+						setChatAgentModelOptions([]);
+					}
+				});
+			return () => {
+				cancelled = true;
+			};
+		}, [chatAgentId, chatAgentModelId, workspaceId]);
 		const isCreditLimitNoticeVisible = summary?.latestHookActivity?.notificationType === "credit_limit";
 		const [mode, setMode] = useState<RuntimeTaskSessionMode>(() => {
 			const persistedMode = modeByTaskIdRef.current.get(taskId);
@@ -426,19 +515,63 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 						canCancel={canCancel}
 						onSend={handleComposerSend}
 						onCancel={handleCancelTurn}
-						showModelPicker={showModelPicker}
-						modelOptions={modelOptions}
+						showModelPicker={showModelPicker || Boolean(chatAgentModelOptions)}
+						modelOptions={chatAgentModelOptions ?? modelOptions}
 						recommendedModelIds={modelPickerOptions.recommendedModelIds}
 						pinSelectedModelToTop={modelPickerOptions.shouldPinSelectedModelToTop}
-						selectedModelId={clineSettings.modelId}
-						selectedModelButtonText={selectedModelButtonText}
-						onSelectModel={handleSelectModel}
-						reasoningEnabledModelIds={reasoningEnabledModelIds}
-						selectedReasoningEffort={parseRuntimeClineReasoningEffort(clineSettings.reasoningEffort) ?? ""}
-						onSelectReasoningEffort={handleSelectReasoningEffort}
+						selectedModelId={chatAgentId ? (chatSelection.modelId ?? "") : clineSettings.modelId}
+						selectedModelButtonText={chatAgentId ? chatModelLabel : selectedModelButtonText}
+						onSelectModel={
+							chatAgentId
+								? (value) => {
+										const modelId = value || null;
+										setChatSelection((current) => ({ ...current, modelId }));
+										onChatAgentModelChange?.(modelId);
+									}
+								: handleSelectModel
+						}
+						// Chat agents choose effort from the dedicated control in the toolbar row; Cline's
+						// in-popover effort column would be a second menu for the same setting.
+						reasoningEnabledModelIds={chatAgentId ? [] : reasoningEnabledModelIds}
+						extraToolbarControls={
+							chatAgentId ? (
+								<NativeSelect
+									value={chatSelection.effort ?? ""}
+									onChange={(event) => {
+										const effort = event.target.value || null;
+										setChatSelection((current) => ({ ...current, effort }));
+										onChatAgentReasoningEffortChange?.(effort);
+									}}
+									aria-label="Reasoning effort"
+									className="!h-7 max-w-[150px] text-[11px]"
+								>
+									<option value="">Default effort</option>
+									<option value="low">Low</option>
+									<option value="medium">Medium</option>
+									<option value="high">High</option>
+									<option value="xhigh">Extra high</option>
+								</NativeSelect>
+							) : null
+						}
+						selectedReasoningEffort={
+							chatAgentId
+								? (parseRuntimeClineReasoningEffort(chatSelection.effort) ?? "")
+								: (parseRuntimeClineReasoningEffort(clineSettings.reasoningEffort) ?? "")
+						}
+						onSelectReasoningEffort={
+							chatAgentId
+								? (value) => {
+										const effort = value || null;
+										setChatSelection((current) => ({ ...current, effort }));
+										onChatAgentReasoningEffortChange?.(effort);
+									}
+								: handleSelectReasoningEffort
+						}
 						isModelLoading={clineSettings.isLoadingProviderModels}
 						isModelSaving={isSavingModel}
-						modelPickerDisabled={isSavingModel || clineSettings.providerId.trim().length === 0}
+						modelPickerDisabled={
+							isSavingModel || (chatAgentId ? false : clineSettings.providerId.trim().length === 0)
+						}
 						isSending={isSavingModel || isSending}
 						warningMessage={summary?.warningMessage ?? null}
 						attachmentWarningMessage={attachmentWarningMessage}

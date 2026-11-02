@@ -55,6 +55,7 @@ export function ClineChatComposer({
 	onSend,
 	onCancel,
 	showModelPicker = true,
+	extraToolbarControls,
 	modelOptions,
 	recommendedModelIds = [],
 	pinSelectedModelToTop = true,
@@ -87,6 +88,8 @@ export function ClineChatComposer({
 	onCancel: () => void;
 	/** False for agents whose model is not a Cline provider model (for example claude-chat). */
 	showModelPicker?: boolean;
+	/** Extra toolbar control rendered next to the model picker (chat-agent effort). */
+	extraToolbarControls?: React.ReactNode;
 	modelOptions: readonly SearchSelectOption[];
 	recommendedModelIds?: readonly string[];
 	pinSelectedModelToTop?: boolean;
@@ -513,6 +516,7 @@ export function ClineChatComposer({
 						/>
 					</div>
 				) : null}
+				{extraToolbarControls}
 				<div className="ml-auto flex shrink-0 items-center gap-2">
 					{showModeToggle ? (
 						<Tooltip

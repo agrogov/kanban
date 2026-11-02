@@ -640,7 +640,23 @@ export function CardDetailView({
 			taskHasExplicitAgentSettings={hasExplicitTaskAgentSettings}
 			showModelPicker={isNativeClineAgentSelected(effectiveTaskAgentId)}
 			onAgentSettingsSaved={onAgentSettingsSaved}
-			onTaskAgentSettingsChanged={onTaskAgentSettingsChanged}
+			chatAgentId={isNativeClineAgentSelected(effectiveTaskAgentId) ? null : effectiveTaskAgentId}
+			chatAgentModelId={selection.card.agentSettings?.modelId ?? null}
+			onChatAgentModelChange={(modelId) =>
+				onTaskAgentSettingsChanged?.({
+					providerId: selection.card.agentSettings?.providerId ?? "",
+					modelId: modelId ?? "",
+					reasoningEffort: selection.card.agentSettings?.reasoningEffort ?? "",
+				})
+			}
+			chatAgentReasoningEffort={selection.card.agentSettings?.reasoningEffort ?? null}
+			onChatAgentReasoningEffortChange={(reasoningEffort) =>
+				onTaskAgentSettingsChanged?.({
+					providerId: selection.card.agentSettings?.providerId ?? "",
+					modelId: selection.card.agentSettings?.modelId ?? "",
+					reasoningEffort: reasoningEffort ?? "",
+				})
+			}
 			onSendMessage={onSendClineChatMessage}
 			onCancelTurn={onCancelClineChatTurn}
 			onLoadMessages={onLoadClineChatMessages}

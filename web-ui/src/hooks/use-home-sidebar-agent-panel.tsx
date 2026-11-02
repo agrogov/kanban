@@ -57,6 +57,43 @@ export function useHomeSidebarAgentPanel({
 	const isMobile = useIsMobile();
 	const terminalThemeColors = useTerminalThemeColors();
 	const [sessionSummaries, setSessionSummaries] = useState<Record<string, RuntimeTaskSessionSummary>>({});
+	// A model belongs to the agent that offered it. Storing the pair (instead of
+	// clearing in an effect) matters: effects of the session hook run before this
+	// component's, so a reset effect would still let one start request go out with
+	// the previous agent's model.
+	const selectedAgentIdForModel = runtimeProjectConfig?.selectedAgentId ?? null;
+	// Selections are kept per agent: switching to another agent and back restores
+	// what was chosen for it, instead of falling back to its default.
+	const [chatAgentSelections, setChatAgentSelections] = useState<
+		Record<string, { modelId: string | null; effort: string | null }>
+	>({});
+	const currentChatSelection = selectedAgentIdForModel ? (chatAgentSelections[selectedAgentIdForModel] ?? null) : null;
+	const chatAgentModelId = currentChatSelection?.modelId ?? null;
+	const chatAgentReasoningEffort = currentChatSelection?.effort ?? null;
+	const updateChatSelection = useCallback(
+		(patch: { modelId?: string | null; effort?: string | null }) => {
+			if (!selectedAgentIdForModel) {
+				return;
+			}
+			const agentId = selectedAgentIdForModel;
+			setChatAgentSelections((current) => ({
+				...current,
+				[agentId]: {
+					modelId: patch.modelId !== undefined ? patch.modelId : (current[agentId]?.modelId ?? null),
+					effort: patch.effort !== undefined ? patch.effort : (current[agentId]?.effort ?? null),
+				},
+			}));
+		},
+		[selectedAgentIdForModel],
+	);
+	const setChatAgentModelId = useCallback(
+		(modelId: string | null) => updateChatSelection({ modelId }),
+		[updateChatSelection],
+	);
+	const setChatAgentReasoningEffort = useCallback(
+		(effort: string | null) => updateChatSelection({ effort }),
+		[updateChatSelection],
+	);
 	const upsertSessionSummary = useCallback((summary: RuntimeTaskSessionSummary) => {
 		setSessionSummaries((currentSessions) => {
 			const previousSummary = currentSessions[summary.taskId] ?? null;
@@ -85,6 +122,8 @@ export function useHomeSidebarAgentPanel({
 		runtimeProjectConfig,
 		workspaceGit,
 		clineSessionContextVersion,
+		chatAgentModelId,
+		chatAgentReasoningEffort,
 		sessionSummaries: effectiveSessionSummaries,
 		setSessionSummaries,
 		upsertSessionSummary,
@@ -172,6 +211,11 @@ export function useHomeSidebarAgentPanel({
 				// provider's models and is meaningless for Claude/Codex/Pi chat views.
 				composerPlaceholder={`Ask ${selectedAgentLabel} to add, edit, start, or link tasks`}
 				showModelPicker={isClineChat}
+				chatAgentId={isClineChat ? null : (runtimeProjectConfig?.selectedAgentId ?? null)}
+				chatAgentModelId={chatAgentModelId}
+				onChatAgentModelChange={setChatAgentModelId}
+				chatAgentReasoningEffort={chatAgentReasoningEffort}
+				onChatAgentReasoningEffortChange={setChatAgentReasoningEffort}
 			/>
 		);
 	}

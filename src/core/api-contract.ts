@@ -736,6 +736,26 @@ export const runtimeClineProviderCatalogResponseSchema = z.object({
 });
 export type RuntimeClineProviderCatalogResponse = z.infer<typeof runtimeClineProviderCatalogResponseSchema>;
 
+export const runtimeChatAgentModelsRequestSchema = z.object({
+	agentId: runtimeAgentIdSchema.nullable(),
+});
+export type RuntimeChatAgentModelsRequest = z.infer<typeof runtimeChatAgentModelsRequestSchema>;
+
+export const runtimeChatAgentModelSchema = z.object({
+	id: z.string(),
+	label: z.string(),
+	providerId: z.string().nullable(),
+});
+export type RuntimeChatAgentModel = z.infer<typeof runtimeChatAgentModelSchema>;
+
+export const runtimeChatAgentModelsResponseSchema = z.object({
+	agentId: runtimeAgentIdSchema.nullable(),
+	source: z.enum(["config", "none"]),
+	models: z.array(runtimeChatAgentModelSchema),
+	error: z.string().optional(),
+});
+export type RuntimeChatAgentModelsResponse = z.infer<typeof runtimeChatAgentModelsResponseSchema>;
+
 export const runtimeClineProviderModelsRequestSchema = z.object({
 	providerId: z.string(),
 });

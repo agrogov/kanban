@@ -6,6 +6,7 @@
 import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { TRPCError } from "@trpc/server";
 import { createClineMcpRuntimeService } from "../cline-sdk/cline-mcp-runtime-service";
 import { createClineMcpSettingsService } from "../cline-sdk/cline-mcp-settings-service";
@@ -43,6 +44,7 @@ import {
 	parseTaskSessionStartRequest,
 	parseTaskSessionStopRequest,
 } from "../core/api-validation";
+import { listChatAgentModels } from "../core/chat-agent-models";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { parseRuntimeClineReasoningEffort } from "../core/task-agent-settings";
 import { resolveTaskTitle } from "../core/task-title.js";
@@ -577,6 +579,9 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 		switchClineAccount: async (_workspaceScope, input) => {
 			const body = parseClineAccountSwitchRequest(input);
 			return await clineProviderService.switchClineAccount(body.organizationId);
+		},
+		getChatAgentModels: async (_workspaceScope, input) => {
+			return await listChatAgentModels(input?.agentId ?? null, { piAgentDir: getAgentDir() });
 		},
 		getClineProviderModels: async (_workspaceScope, input) => {
 			const body = parseClineProviderModelsRequest(input);

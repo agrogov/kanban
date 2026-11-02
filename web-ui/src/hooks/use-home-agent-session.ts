@@ -26,6 +26,10 @@ interface UseHomeAgentSessionInput {
 	runtimeProjectConfig: RuntimeConfigResponse | null;
 	workspaceGit: RuntimeGitRepositoryInfo | null;
 	clineSessionContextVersion: number;
+	/** Model picked for the selected chat-view agent; part of the session identity. */
+	chatAgentModelId?: string | null;
+	/** Reasoning effort picked for the chat agent; part of the session identity. */
+	chatAgentReasoningEffort?: string | null;
 	sessionSummaries: Record<string, RuntimeTaskSessionSummary>;
 	setSessionSummaries: Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>;
 	upsertSessionSummary: (summary: RuntimeTaskSessionSummary) => void;
@@ -112,6 +116,8 @@ export function useHomeAgentSession({
 	runtimeProjectConfig,
 	workspaceGit,
 	clineSessionContextVersion,
+	chatAgentModelId = null,
+	chatAgentReasoningEffort = null,
 	sessionSummaries,
 	setSessionSummaries,
 	upsertSessionSummary,
@@ -120,6 +126,9 @@ export function useHomeAgentSession({
 	const homeDescriptorByWorkspaceRef = useRef(new Map<string, HomeAgentWorkspaceDescriptor>());
 	const desiredTaskIdByWorkspaceRef = useRef(new Map<string, string>());
 	const startedSessionKeysRef = useRef(new Set<string>());
+	// The server short-circuits startTaskSession for a live session, so a changed
+	// model only takes effect after the old session is stopped.
+	const startedModelByWorkspaceRef = useRef(new Map<string, string>());
 	const pendingStartRequestIdsRef = useRef(new Map<string, number>());
 	const previousClineSessionContextVersionByWorkspaceRef = useRef(new Map<string, number>());
 	const nextStartRequestIdRef = useRef(0);
@@ -143,7 +152,11 @@ export function useHomeAgentSession({
 		// `effectiveCommand` and leaves the sidebar with no session at all.
 		if (isNativeChatAgentSelected(runtimeProjectConfig.selectedAgentId)) {
 			panelMode = "chat";
-			descriptorKey = buildClineDescriptor(runtimeProjectConfig);
+			descriptorKey = JSON.stringify({
+				base: buildClineDescriptor(runtimeProjectConfig),
+				model: chatAgentModelId ?? "",
+				effort: chatAgentReasoningEffort ?? "",
+			});
 		} else {
 			if (!runtimeProjectConfig.effectiveCommand) {
 				return null;
@@ -182,6 +195,8 @@ export function useHomeAgentSession({
 		clineProviderSettings.modelId,
 		clineProviderSettings.reasoningEffort,
 		clineProviderSettings.oauthProvider,
+		chatAgentModelId,
+		chatAgentReasoningEffort,
 		clineProviderSettings.providerId,
 		runtimeProjectConfig?.effectiveCommand,
 		runtimeProjectConfig?.selectedAgentId,
@@ -312,8 +327,16 @@ export function useHomeAgentSession({
 			return;
 		}
 
+		const requestedModelKey = `${chatAgentModelId ?? ""}|${chatAgentReasoningEffort ?? ""}`;
+		const startedModelKey = startedModelByWorkspaceRef.current.get(session.workspaceId);
 		if (startedSessionKeysRef.current.has(sessionKey)) {
-			return;
+			if (startedModelKey === requestedModelKey) {
+				return;
+			}
+			// Model changed: drop the live session so the restart actually rebinds.
+			startedSessionKeysRef.current.delete(sessionKey);
+			startedModelByWorkspaceRef.current.delete(session.workspaceId);
+			void stopHomeAgentSession(session);
 		}
 
 		if (pendingStartRequestIdsRef.current.has(sessionKey)) {
@@ -334,6 +357,14 @@ export function useHomeAgentSession({
 					baseRef: latestBaseRefRef.current,
 					cols: geometry.cols,
 					rows: geometry.rows,
+					...(chatAgentModelId || chatAgentReasoningEffort
+						? {
+								agentSettings: {
+									...(chatAgentModelId ? { modelId: chatAgentModelId } : {}),
+									...(chatAgentReasoningEffort ? { reasoningEffort: chatAgentReasoningEffort } : {}),
+								},
+							}
+						: {}),
 				});
 
 				if (!response.ok || !response.summary) {
@@ -355,6 +386,7 @@ export function useHomeAgentSession({
 				}
 
 				startedSessionKeysRef.current.add(sessionKey);
+				startedModelByWorkspaceRef.current.set(session.workspaceId, requestedModelKey);
 				upsertSessionSummary(response.summary);
 			} catch (error) {
 				if (pendingStartRequestIdsRef.current.get(sessionKey) !== requestId) {
@@ -371,7 +403,15 @@ export function useHomeAgentSession({
 				notifyError(message);
 			}
 		})();
-	}, [currentProjectId, descriptor, sessionSummaries, shouldStartSessionEagerly, upsertSessionSummary]);
+	}, [
+		chatAgentModelId,
+		chatAgentReasoningEffort,
+		currentProjectId,
+		descriptor,
+		sessionSummaries,
+		shouldStartSessionEagerly,
+		upsertSessionSummary,
+	]);
 
 	useEffect(() => {
 		return () => {

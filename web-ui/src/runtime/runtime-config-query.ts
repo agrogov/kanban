@@ -5,6 +5,7 @@ import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeAgencSettingsSave,
 	RuntimeAgentId,
+	RuntimeChatAgentModelsResponse,
 	RuntimeClineAccountBalanceResponse,
 	RuntimeClineAccountOrganizationsResponse,
 	RuntimeClineAccountProfileResponse,
@@ -145,6 +146,13 @@ export async function fetchClineKanbanAccess(workspaceId: string | null): Promis
 export async function fetchFeaturebaseToken(workspaceId: string | null): Promise<RuntimeFeaturebaseTokenResponse> {
 	const trpcClient = getRuntimeTrpcClient(workspaceId);
 	return await trpcClient.runtime.getFeaturebaseToken.query();
+}
+
+export async function fetchChatAgentModels(
+	workspaceId: string | null,
+	agentId: RuntimeAgentId,
+): Promise<RuntimeChatAgentModelsResponse> {
+	return await getRuntimeTrpcClient(workspaceId).runtime.getChatAgentModels.query({ agentId });
 }
 
 export async function fetchClineProviderModels(
