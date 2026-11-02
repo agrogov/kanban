@@ -102,7 +102,15 @@ export function ProjectNavigationPanel({
 
 	const isMobile = useIsMobile();
 	const [isMobileClosing, setIsMobileClosing] = useState(false);
-	const [isAgentSectionHidden, setIsAgentSectionHidden] = useState(false);
+	const [isAgentSectionHidden, setIsAgentSectionHidden] = useState(
+		() => readLocalStorageItem(LocalStorageKey.ProjectNavigationAgentSectionHidden) === "true",
+	);
+	const toggleAgentSectionHidden = useCallback(() => {
+		setIsAgentSectionHidden((hidden) => {
+			writeLocalStorageItem(LocalStorageKey.ProjectNavigationAgentSectionHidden, String(!hidden));
+			return !hidden;
+		});
+	}, []);
 
 	useEffect(() => {
 		if (isMobile) {
@@ -306,7 +314,7 @@ export function ProjectNavigationPanel({
 							variant="ghost"
 							size="sm"
 							icon={isAgentSectionHidden ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-							onClick={() => setIsAgentSectionHidden((hidden) => !hidden)}
+							onClick={toggleAgentSectionHidden}
 							disabled={activeSection !== "agent"}
 							aria-label={isAgentSectionHidden ? "Show Kanban Agent" : "Hide Kanban Agent"}
 							aria-pressed={isAgentSectionHidden}
