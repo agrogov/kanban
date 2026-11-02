@@ -752,6 +752,8 @@ export const runtimeChatAgentModelsResponseSchema = z.object({
 	agentId: runtimeAgentIdSchema.nullable(),
 	source: z.enum(["config", "none"]),
 	models: z.array(runtimeChatAgentModelSchema),
+	/** Id of the model the agent's own CLI would use; the picker seeds with it. */
+	defaultModelId: z.string().nullable().optional(),
 	error: z.string().optional(),
 });
 export type RuntimeChatAgentModelsResponse = z.infer<typeof runtimeChatAgentModelsResponseSchema>;

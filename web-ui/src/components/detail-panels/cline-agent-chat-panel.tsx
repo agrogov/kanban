@@ -195,6 +195,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 		const [composerError, setComposerError] = useState<string | null>(null);
 		const [isSavingModel, setIsSavingModel] = useState(false);
 		const [chatAgentModelOptions, setChatAgentModelOptions] = useState<SearchSelectOption[] | null>(null);
+		const [chatAgentDefaultModelId, setChatAgentDefaultModelId] = useState<string | null>(null);
 		// The displayed choice is owned here so it updates on click: the persisted
 		// prop round-trips through the board/config and lags by a render.
 		const [chatSelection, setChatSelection] = useState<{ modelId: string | null; effort: string | null }>({
@@ -224,15 +225,17 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 		// with the agent's effective model — otherwise the effort column stays disabled
 		// and no effort can ever be chosen or displayed.
 		useEffect(() => {
-			const fallbackModelId = chatAgentModelOptions?.[0]?.value;
+			// The agent's configured default, not the first (alphabetical) catalog entry.
+			const fallbackModelId = chatAgentDefaultModelId ?? chatAgentModelOptions?.[0]?.value;
 			if (!fallbackModelId) {
 				return;
 			}
 			setChatSelection((current) => (current.modelId ? current : { ...current, modelId: fallbackModelId }));
-		}, [chatAgentModelOptions]);
+		}, [chatAgentModelOptions, chatAgentDefaultModelId]);
 		const chatModelLabel = useMemo(() => {
 			const label =
-				chatAgentModelOptions?.find((option) => option.value === chatSelection.modelId)?.label ??
+				chatAgentModelOptions?.find((option) => option.value === (chatSelection.modelId ?? chatAgentDefaultModelId))
+					?.label ??
 				chatAgentModelOptions?.[0]?.label ??
 				"Default model";
 			const effort = chatSelection.effort;
@@ -241,10 +244,11 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 			}
 			const effortLabel = effort === "xhigh" ? "Extra high" : effort.charAt(0).toUpperCase() + effort.slice(1);
 			return `${label} (${effortLabel})`;
-		}, [chatAgentModelOptions, chatSelection]);
+		}, [chatAgentModelOptions, chatAgentDefaultModelId, chatSelection]);
 		useEffect(() => {
 			if (!chatAgentId || chatAgentId === "cline") {
 				setChatAgentModelOptions(null);
+				setChatAgentDefaultModelId(null);
 				return;
 			}
 			let cancelled = false;
@@ -257,6 +261,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 						// previously selected agent must not be injected here, or the label
 						// keeps advertising another agent's model.
 						setChatAgentModelOptions(response.models.map((model) => ({ value: model.id, label: model.label })));
+						setChatAgentDefaultModelId(response.defaultModelId ?? null);
 					}
 				})
 				.catch(() => {

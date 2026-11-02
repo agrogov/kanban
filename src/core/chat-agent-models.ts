@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { readPiDefaultModel } from "../pi-chat/pi-chat-task-session-service";
 import type { RuntimeAgentId } from "./api-contract";
 
 // Model catalogs for the native chat agents.
@@ -22,6 +23,7 @@ export interface ChatAgentModelsResponse {
 	agentId: RuntimeAgentId | null;
 	source: "config" | "none";
 	models: ChatAgentModelOption[];
+	defaultModelId?: string | null;
 	error?: string;
 }
 
@@ -97,8 +99,11 @@ export async function listChatAgentModels(
 		const raw = await readTextFile(join(options.piAgentDir, "models.json"));
 		const file = raw ? (JSON.parse(raw) as PiModelsFile) : null;
 		const models = listPiConfiguredModels(file);
+		// Same convention as `pi --model`: "provider/id" or a bare model id.
+		const piDefault = await readPiDefaultModel(options.piAgentDir);
+		const defaultModelId = models.find((model) => model.id === piDefault || model.label === piDefault)?.id ?? null;
 		return models.length > 0
-			? { agentId, source: "config", models }
+			? { agentId, source: "config", models, defaultModelId }
 			: {
 					agentId,
 					source: "none",
