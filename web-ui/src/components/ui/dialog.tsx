@@ -57,7 +57,7 @@ export function DialogHeader({
 }): React.ReactElement {
 	return (
 		<div className="flex items-center justify-between px-2 py-2 max-md:px-3 max-md:py-3 bg-surface-2 border-b border-[#5A6572] shrink-0 rounded-t-lg">
-			<RadixDialog.Title className="flex items-center gap-2 text-sm font-semibold text-text-primary">
+			<RadixDialog.Title className="flex items-center gap-2 text-sm font-medium text-text-primary">
 				{icon ? <span className="text-text-secondary">{icon}</span> : null}
 				{title}
 			</RadixDialog.Title>
@@ -143,7 +143,7 @@ export function AlertDialogBody({
 	return (
 		<div
 			className={cn(
-				"flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain bg-surface-1 p-4 text-[13px] text-text-secondary",
+				"flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain bg-surface-1 p-4 text-ui text-text-secondary",
 				className,
 			)}
 		>
@@ -176,11 +176,7 @@ export const AlertDialogTitle = forwardRef<
 	ComponentPropsWithoutRef<typeof RadixAlertDialog.Title>
 >(function AlertDialogTitle({ className, ...props }, ref) {
 	return (
-		<RadixAlertDialog.Title
-			ref={ref}
-			className={cn("text-sm font-semibold text-text-primary", className)}
-			{...props}
-		/>
+		<RadixAlertDialog.Title ref={ref} className={cn("text-sm font-medium text-text-primary", className)} {...props} />
 	);
 });
 
@@ -189,7 +185,7 @@ export const AlertDialogDescription = forwardRef<
 	ComponentPropsWithoutRef<typeof RadixAlertDialog.Description>
 >(function AlertDialogDescription({ className, ...props }, ref) {
 	return (
-		<RadixAlertDialog.Description ref={ref} className={cn("text-[13px] text-text-secondary", className)} {...props} />
+		<RadixAlertDialog.Description ref={ref} className={cn("text-ui text-text-secondary", className)} {...props} />
 	);
 });
 

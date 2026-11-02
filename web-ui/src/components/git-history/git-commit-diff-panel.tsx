@@ -227,7 +227,7 @@ export function GitCommitDiffPanel({
 					style={{ flex: 1 }}
 				>
 					{errorMessage ? <AlertCircle size={48} /> : <GitCommit size={48} />}
-					<h3 className="font-semibold text-text-primary">
+					<h3 className="font-medium text-text-primary">
 						{errorMessage ? "Could not load diff" : "Select a commit"}
 					</h3>
 					{errorMessage ? <p className="text-text-secondary">{errorMessage}</p> : null}
@@ -305,7 +305,7 @@ export function GitCommitDiffPanel({
 					style={{ flex: 1 }}
 				>
 					<GitCompare size={48} />
-					<h3 className="font-semibold text-text-primary">No changes</h3>
+					<h3 className="font-medium text-text-primary">No changes</h3>
 				</div>
 			</div>
 		);
@@ -357,7 +357,7 @@ export function GitCommitDiffPanel({
 							>
 								<button
 									type="button"
-									className="kb-diff-file-header flex w-full items-center gap-2 rounded-t-md border border-border bg-surface-1 px-3 py-2 text-left text-[13px] text-text-primary hover:bg-surface-3 active:bg-surface-4 cursor-pointer"
+									className="kb-diff-file-header flex w-full items-center gap-2 rounded-t-md border border-border bg-surface-1 px-3 py-2 text-left text-ui text-text-primary hover:bg-surface-3 active:bg-surface-4 cursor-pointer"
 									aria-expanded={isExpanded}
 									aria-current={selectedPath === path ? "true" : undefined}
 									onClick={() => {

@@ -113,7 +113,7 @@ function InlineComment({
 				onClick={(event) => event.stopPropagation()}
 				placeholder="Add a comment..."
 				rows={1}
-				className="w-full rounded-md border border-border bg-surface-2 p-3 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none resize-none"
+				className="w-full rounded-md border border-border bg-surface-2 p-3 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none resize-none"
 				style={{ fontSize: 12 }}
 			/>
 		</div>
@@ -848,7 +848,7 @@ export function DiffViewerPanel({
 								>
 									<button
 										type="button"
-										className="kb-diff-file-header flex w-full items-center gap-2 rounded-t-md border border-border bg-surface-1 px-2 py-1.5 text-left text-[12px] text-text-primary hover:bg-surface-3 active:bg-surface-4 cursor-pointer"
+										className="kb-diff-file-header flex w-full items-center gap-2 rounded-t-md border border-border bg-surface-1 px-2 py-1.5 text-left text-label text-text-primary hover:bg-surface-3 active:bg-surface-4 cursor-pointer"
 										aria-expanded={isExpanded}
 										aria-current={selectedPath === group.path ? "true" : undefined}
 										onClick={() => {

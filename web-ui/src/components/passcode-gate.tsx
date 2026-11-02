@@ -165,7 +165,7 @@ export function PasscodeGate({ onAuthenticated }: PasscodeGateProps): ReactEleme
 							<KeyRound size={18} />
 						</div>
 						<div>
-							<h1 className="text-base font-semibold text-text-primary">Remote Access</h1>
+							<h1 className="text-base font-medium text-text-primary">Remote Access</h1>
 							<p className="text-xs text-text-secondary">Enter the passcode to continue</p>
 						</div>
 					</div>

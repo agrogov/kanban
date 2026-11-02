@@ -186,7 +186,7 @@ function WorkspaceChangesEmptyPanel({ title }: { title: string }): React.ReactEl
 			<div className="kb-empty-state-center flex-1">
 				<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary">
 					<GitCompareArrows size={40} />
-					<h3 className="font-semibold text-text-secondary">{title}</h3>
+					<h3 className="font-medium text-text-secondary">{title}</h3>
 				</div>
 			</div>
 		</div>

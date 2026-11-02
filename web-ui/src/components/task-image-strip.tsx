@@ -23,9 +23,7 @@ export function TaskImageStrip({
 
 	return (
 		<div className={className}>
-			{label ? (
-				<div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-text-tertiary">{label}</div>
-			) : null}
+			{label ? <div className="mb-1.5 text-micro font-medium text-text-tertiary">{label}</div> : null}
 			<div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto pr-1">
 				{images.map((image) => {
 					const preview = (
@@ -35,7 +33,7 @@ export function TaskImageStrip({
 								alt={image.name ?? "attached image"}
 								className="h-5 w-5 rounded object-cover"
 							/>
-							<span className="min-w-0 max-w-32 truncate text-[11px] text-text-secondary">
+							<span className="min-w-0 max-w-32 truncate text-micro text-text-secondary">
 								{image.name ?? "Image"}
 							</span>
 							{onRemoveImage ? (

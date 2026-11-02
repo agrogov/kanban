@@ -105,7 +105,7 @@ export function BoardColumn({
 				>
 					<div className="flex items-center gap-2">
 						<ColumnIndicator columnId={column.id} />
-						<span className="font-semibold text-sm">{column.title}</span>
+						<span className="font-medium text-sm">{column.title}</span>
 						<span className="text-text-secondary text-xs">{column.cards.length}</span>
 					</div>
 					{canStartAllTasks ? (

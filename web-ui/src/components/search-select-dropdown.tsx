@@ -279,7 +279,7 @@ export function SearchSelectDropdown({
 				}}
 				className={cn(
 					"flex w-full items-center gap-2 px-2.5 py-1.5 rounded-md text-left",
-					isCustomValue ? "text-[12px]" : "text-[13px]",
+					isCustomValue ? "text-label" : "text-ui",
 					isActive
 						? "bg-surface-3 text-text-primary"
 						: "text-text-secondary hover:bg-surface-3 hover:text-text-primary",
@@ -342,11 +342,11 @@ export function SearchSelectDropdown({
 					</div>
 					<div ref={menuRef} className="max-h-[250px] overflow-y-auto overscroll-contain p-1" style={menuStyle}>
 						{filteredItems.length === 0 ? (
-							<div className="px-2.5 py-1.5 text-[13px] text-text-tertiary">{noResultsText}</div>
+							<div className="px-2.5 py-1.5 text-ui text-text-tertiary">{noResultsText}</div>
 						) : (
 							<>
 								{showRecommendedSection && recommendedItems.length > 0 ? (
-									<div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
+									<div className="px-2.5 py-1.5 text-micro font-medium text-text-tertiary">
 										{recommendedHeading}
 									</div>
 								) : null}
@@ -357,7 +357,7 @@ export function SearchSelectDropdown({
 									<div className="border-t border-border p-1">
 										<button
 											type="button"
-											className="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-[13px] text-text-secondary hover:bg-surface-3 hover:text-text-primary"
+											className="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-ui text-text-secondary hover:bg-surface-3 hover:text-text-primary"
 											onClick={() => {
 												footerAction.onClick();
 												handleOpenChange(false);
@@ -370,9 +370,7 @@ export function SearchSelectDropdown({
 								{showRecommendedSection && recommendedItems.length > 0 && otherItems.length > 0 ? (
 									<>
 										<div className="my-1 border-t border-border" />
-										<div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
-											All models
-										</div>
+										<div className="px-2.5 py-1.5 text-micro font-medium text-text-tertiary">All models</div>
 									</>
 								) : null}
 								{showRecommendedSection && otherItems.length > 0

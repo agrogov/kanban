@@ -317,54 +317,54 @@ export function ClineAddProviderDialog({
 				<section className="rounded-lg border border-border bg-surface-1 p-3">
 					<div className="grid gap-3 md:grid-cols-2">
 						<div className="min-w-0">
-							<p className="mb-1 text-[12px] text-text-secondary">Provider ID</p>
+							<p className="mb-1 text-label text-text-secondary">Provider ID</p>
 							<input
 								value={form.providerId}
 								onChange={(event) => setForm((current) => ({ ...current, providerId: event.target.value }))}
 								placeholder="my-provider"
 								disabled={mode === "edit"}
-								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
-							<p className="mt-1 text-[12px] text-text-tertiary">
+							<p className="mt-1 text-label text-text-tertiary">
 								{mode === "edit"
 									? "Provider ID is fixed for existing providers."
 									: "Used as the saved provider key."}
 							</p>
 							{duplicateProviderId ? (
-								<p className="mt-1 text-[12px] text-status-red">This provider ID already exists.</p>
+								<p className="mt-1 text-label text-status-red">This provider ID already exists.</p>
 							) : null}
 						</div>
 						<div className="min-w-0">
-							<p className="mb-1 text-[12px] text-text-secondary">Provider name</p>
+							<p className="mb-1 text-label text-text-secondary">Provider name</p>
 							<input
 								value={form.name}
 								onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
 								placeholder="My Provider"
-								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 						</div>
 					</div>
 				</section>
 
 				<section className="rounded-lg border border-border bg-surface-1 p-3">
-					<p className="mb-1 text-[12px] text-text-secondary">Base URL</p>
+					<p className="mb-1 text-label text-text-secondary">Base URL</p>
 					<input
 						value={form.baseUrl}
 						onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))}
 						placeholder="https://api.example.com/v1"
-						className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+						className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 					/>
 				</section>
 
 				<section className="rounded-lg border border-border bg-surface-1 p-3">
-					<p className="mb-1 text-[12px] text-text-secondary">API key</p>
+					<p className="mb-1 text-label text-text-secondary">API key</p>
 					<div className="relative">
 						<input
 							type={showApiKey ? "text" : "password"}
 							value={form.apiKey}
 							onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))}
 							placeholder="Optional"
-							className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 pr-9 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 pr-9 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 						/>
 						<Button
 							variant="ghost"
@@ -378,25 +378,25 @@ export function ClineAddProviderDialog({
 				</section>
 
 				<section className="rounded-lg border border-border bg-surface-1 p-3">
-					<p className="mb-1 text-[12px] text-text-secondary">Model source URL</p>
+					<p className="mb-1 text-label text-text-secondary">Model source URL</p>
 					<input
 						value={form.modelsSourceUrl}
 						onChange={(event) => setForm((current) => ({ ...current, modelsSourceUrl: event.target.value }))}
 						placeholder="https://api.example.com/v1/models"
-						className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+						className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 					/>
-					<p className="mt-1 text-[12px] text-text-tertiary">
+					<p className="mt-1 text-label text-text-tertiary">
 						Optional. If set, the SDK can fetch models from a compatible `/models` endpoint.
 					</p>
 				</section>
 
 				<section className="rounded-lg border border-border bg-surface-1 p-3">
-					<p className="mb-1 text-[12px] text-text-secondary">Models</p>
+					<p className="mb-1 text-label text-text-secondary">Models</p>
 					<div className="flex min-h-10 flex-wrap gap-1 rounded-md border border-border bg-surface-2 px-2 py-1.5">
 						{form.models.map((model) => (
 							<span
 								key={model}
-								className="inline-flex items-center gap-1 rounded-md bg-surface-3 px-2 py-1 text-[12px] text-text-primary"
+								className="inline-flex items-center gap-1 rounded-md bg-surface-3 px-2 py-1 text-label text-text-primary"
 							>
 								<span className="font-mono">{model}</span>
 								<button
@@ -420,15 +420,15 @@ export function ClineAddProviderDialog({
 								}
 							}}
 							placeholder={form.models.length === 0 ? "Type a model ID and press Enter" : ""}
-							className="min-w-40 flex-1 bg-transparent text-[13px] text-text-primary placeholder:text-text-tertiary focus:outline-none"
+							className="min-w-40 flex-1 bg-transparent text-ui text-text-primary placeholder:text-text-tertiary focus:outline-none"
 						/>
 					</div>
-					<p className="mt-1 text-[12px] text-text-tertiary">Add at least one model or set a model source URL.</p>
+					<p className="mt-1 text-label text-text-tertiary">Add at least one model or set a model source URL.</p>
 				</section>
 
 				{draftModels.length > 1 ? (
 					<section className="rounded-lg border border-border bg-surface-1 p-3">
-						<p className="mb-1 text-[12px] text-text-secondary">Default model</p>
+						<p className="mb-1 text-label text-text-secondary">Default model</p>
 						<NativeSelect
 							fill
 							value={form.defaultModelId}
@@ -444,7 +444,7 @@ export function ClineAddProviderDialog({
 				) : null}
 
 				<section className="rounded-lg border border-border bg-surface-1 p-3">
-					<p className="mb-2 text-[12px] text-text-secondary">Capabilities</p>
+					<p className="mb-2 text-label text-text-secondary">Capabilities</p>
 					<div className="flex flex-wrap gap-2">
 						{CAPABILITY_OPTIONS.map((capability) => {
 							const selected = form.capabilities.includes(capability);
@@ -466,21 +466,21 @@ export function ClineAddProviderDialog({
 				</section>
 
 				<section className="rounded-lg border border-border bg-surface-1 p-3">
-					<h3 className="mb-3 text-[12px] font-medium text-text-primary">Advanced settings</h3>
+					<h3 className="mb-3 text-label font-medium text-text-primary">Advanced settings</h3>
 					<div className="space-y-3">
 						<div className="min-w-0">
-							<p className="mb-1 text-[12px] text-text-secondary">Timeout (ms)</p>
+							<p className="mb-1 text-label text-text-secondary">Timeout (ms)</p>
 							<input
 								value={form.timeoutMs}
 								onChange={(event) => setForm((current) => ({ ...current, timeoutMs: event.target.value }))}
 								placeholder="30000"
 								inputMode="numeric"
-								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 						</div>
 						<div className="min-w-0">
 							<div className="mb-1 flex items-center justify-between">
-								<p className="text-[12px] text-text-secondary">Custom headers</p>
+								<p className="text-label text-text-secondary">Custom headers</p>
 								<Button
 									variant="ghost"
 									size="sm"
@@ -509,7 +509,7 @@ export function ClineAddProviderDialog({
 												}))
 											}
 											placeholder="Header name"
-											className="h-8 rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+											className="h-8 rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 										/>
 										<input
 											value={entry.value}
@@ -522,7 +522,7 @@ export function ClineAddProviderDialog({
 												}))
 											}
 											placeholder="Header value"
-											className="h-8 rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+											className="h-8 rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 										/>
 										<Button
 											variant="ghost"
@@ -543,7 +543,7 @@ export function ClineAddProviderDialog({
 					</div>
 				</section>
 
-				{error ? <p className="text-[12px] text-status-red">{error}</p> : null}
+				{error ? <p className="text-label text-status-red">{error}</p> : null}
 			</DialogBody>
 			<DialogFooter>
 				<Button variant="ghost" size="md" onClick={() => onOpenChange(false)}>

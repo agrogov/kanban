@@ -61,7 +61,7 @@ function ButtonShortcut({
 				isMacPlatform ? (
 					<Option size={12} />
 				) : (
-					<span className="text-[10px] font-medium leading-none">Alt</span>
+					<span className="text-micro font-medium leading-none">Alt</span>
 				)
 			) : (
 				<Command size={12} />
@@ -446,10 +446,10 @@ export function TaskCreateDialog({
 							showAttachImageButton={false}
 						/>
 						<div className="flex items-center justify-between mt-1.5">
-							<p className="text-[11px] text-text-tertiary">
-								Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to
+							<p className="text-micro text-text-tertiary">
+								Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-micro">@file</code> to
 								reference files. Drag and drop or{" "}
-								<code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">
+								<code className="rounded bg-surface-3 px-1 py-px font-mono text-micro">
 									{pasteShortcutLabel}
 								</code>{" "}
 								to add images.
@@ -458,7 +458,7 @@ export function TaskCreateDialog({
 								<button
 									type="button"
 									onClick={handleSplitIntoTasks}
-									className="inline-flex items-center gap-1.5 text-[12px] text-status-blue hover:text-[#86BEFF] cursor-pointer shrink-0"
+									className="inline-flex items-center gap-1.5 text-label text-status-blue hover:text-[#86BEFF] cursor-pointer shrink-0"
 								>
 									<List size={12} />
 									Split into {detectedItems.length} tasks
@@ -471,7 +471,7 @@ export function TaskCreateDialog({
 						<div className="flex flex-col gap-1.5">
 							{taskPrompts.map((taskPrompt, index) => (
 								<div key={index} className="flex items-center gap-1.5">
-									<span className="text-[12px] text-text-tertiary text-right shrink-0 tabular-nums">
+									<span className="text-label text-text-tertiary text-right shrink-0 tabular-nums">
 										{index + 1}.
 									</span>
 									<input
@@ -481,7 +481,7 @@ export function TaskCreateDialog({
 										onChange={(e) => handleUpdateTaskPrompt(index, e.target.value)}
 										onKeyDown={(e) => handleInputKeyDown(index, e)}
 										placeholder="Describe the task..."
-										className="flex-1 min-w-0 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+										className="flex-1 min-w-0 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 									/>
 									<Button
 										variant="ghost"
@@ -497,7 +497,7 @@ export function TaskCreateDialog({
 							<button
 								type="button"
 								onClick={() => handleAddTask()}
-								className="inline-flex items-center gap-1.5 text-[12px] text-text-secondary hover:text-text-primary cursor-pointer"
+								className="inline-flex items-center gap-1.5 text-label text-text-secondary hover:text-text-primary cursor-pointer"
 							>
 								<Plus size={12} />
 								Add task
@@ -505,7 +505,7 @@ export function TaskCreateDialog({
 							<button
 								type="button"
 								onClick={handleBackToSingle}
-								className="inline-flex items-center gap-1.5 text-[12px] text-text-secondary hover:text-text-primary cursor-pointer"
+								className="inline-flex items-center gap-1.5 text-label text-text-secondary hover:text-text-primary cursor-pointer"
 							>
 								<ArrowLeft size={12} />
 								Back to single prompt
@@ -517,7 +517,7 @@ export function TaskCreateDialog({
 				<div className="flex flex-col gap-2.5 mt-4 pt-4 border-t border-border">
 					<label
 						htmlFor={startInPlanModeId}
-						className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
+						className="flex items-center gap-2 text-label text-text-primary cursor-pointer select-none"
 					>
 						<RadixCheckbox.Root
 							id={startInPlanModeId}
@@ -534,7 +534,7 @@ export function TaskCreateDialog({
 					</label>
 
 					<div>
-						<span className="text-[11px] text-text-secondary block mb-1">Worktree base ref</span>
+						<span className="text-micro text-text-secondary block mb-1">Worktree base ref</span>
 						<BranchSelectDropdown
 							options={branchOptions}
 							selectedValue={branchRef}
@@ -548,7 +548,7 @@ export function TaskCreateDialog({
 					<div className="flex items-center gap-2 flex-wrap">
 						<label
 							htmlFor={autoReviewEnabledId}
-							className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
+							className="flex items-center gap-2 text-label text-text-primary cursor-pointer select-none"
 						>
 							<RadixCheckbox.Root
 								id={autoReviewEnabledId}
@@ -600,7 +600,7 @@ export function TaskCreateDialog({
 			<DialogFooter>
 				<label
 					htmlFor={createMoreId}
-					className="mr-auto flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
+					className="mr-auto flex items-center gap-2 text-label text-text-primary cursor-pointer select-none"
 				>
 					<RadixSwitch.Root
 						id={createMoreId}
@@ -658,7 +658,7 @@ export function TaskCreateDialog({
 										onCloseAutoFocus={(event) => event.preventDefault()}
 									>
 										<DropdownMenu.Item
-											className="flex items-center justify-between gap-2 rounded-sm px-2 py-1 text-[12px] text-text-primary cursor-pointer outline-none data-[highlighted]:bg-surface-3 whitespace-nowrap"
+											className="flex items-center justify-between gap-2 rounded-sm px-2 py-1 text-label text-text-primary cursor-pointer outline-none data-[highlighted]:bg-surface-3 whitespace-nowrap"
 											onSelect={() => handleRunSingleStartAction(secondaryStartAction)}
 										>
 											{secondaryStartLabel}
@@ -667,7 +667,7 @@ export function TaskCreateDialog({
 													isMacPlatform ? (
 														<Option size={10} />
 													) : (
-														<span className="text-[10px] font-medium leading-none">Alt</span>
+														<span className="text-micro font-medium leading-none">Alt</span>
 													)
 												) : (
 													<Command size={10} />

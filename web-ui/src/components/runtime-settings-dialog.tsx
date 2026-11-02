@@ -202,7 +202,7 @@ function AgentRow({
 				)}
 				<div className="min-w-0">
 					<div className="flex items-center gap-2">
-						<span className="text-[13px] text-text-primary">{agent.label}</span>
+						<span className="text-ui text-text-primary">{agent.label}</span>
 						{!isNativeCline && isInstalled ? (
 							<span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-status-green/10 text-status-green">
 								Installed
@@ -347,7 +347,7 @@ function SettingsNav({
 					type="button"
 					onClick={() => onSelect(item.id)}
 					className={cn(
-						"flex items-center gap-2.5 text-left px-3 py-2 rounded-md text-[13px] font-medium cursor-pointer",
+						"flex items-center gap-2.5 text-left px-3 py-2 rounded-md text-ui font-medium cursor-pointer",
 						activeId === item.id
 							? "bg-surface-3 text-text-primary"
 							: "text-text-secondary hover:text-text-primary hover:bg-surface-2",
@@ -819,15 +819,13 @@ export function RuntimeSettingsDialog({
 					{/* ---- General ---- */}
 					<div data-settings-section="general" />
 					<div className="sticky top-0 -mx-5 px-5 pt-4 pb-2 bg-surface-1 z-10">
-						<h2 className="flex items-center gap-2 text-base font-semibold text-text-primary m-0">
+						<h2 className="flex items-center gap-2 text-base font-medium text-text-primary m-0">
 							<SlidersHorizontal size={16} className="text-text-secondary" />
 							General
 						</h2>
 					</div>
 					<div className="rounded-lg border border-border bg-surface-0 px-4 py-3 mb-4">
-						<h6 className="text-[12px] font-semibold uppercase tracking-wider text-text-secondary m-0 mb-1">
-							Agent
-						</h6>
+						<h6 className="text-label font-medium text-text-secondary m-0 mb-1">Agent</h6>
 						{displayedAgents.map((agent) => (
 							<AgentRow
 								key={agent.id}
@@ -842,7 +840,7 @@ export function RuntimeSettingsDialog({
 						) : null}
 						<label
 							htmlFor={bypassPermissionsCheckboxId}
-							className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
+							className="flex items-center gap-2 text-ui text-text-primary mt-2 cursor-pointer"
 						>
 							<RadixCheckbox.Root
 								id={bypassPermissionsCheckboxId}
@@ -858,7 +856,7 @@ export function RuntimeSettingsDialog({
 							</RadixCheckbox.Root>
 							<span>Enable bypass permissions flag</span>
 						</label>
-						<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
+						<p className="text-text-secondary text-ui ml-6 mt-0 mb-0">
 							Allows agents to use tools without stopping for permission. Use at your own risk.
 						</p>
 					</div>
@@ -878,7 +876,7 @@ export function RuntimeSettingsDialog({
 						<>
 							<div data-settings-section="cline" />
 							<div className="sticky top-0 -mx-5 px-5 pt-4 pb-2 bg-surface-1 z-10">
-								<h2 className="flex items-center gap-2 text-base font-semibold text-text-primary m-0">
+								<h2 className="flex items-center gap-2 text-base font-medium text-text-primary m-0">
 									<Bot size={16} className="text-text-secondary" />
 									Cline
 								</h2>
@@ -908,13 +906,13 @@ export function RuntimeSettingsDialog({
 					{/* ---- Git Prompts ---- */}
 					<div data-settings-section="git-prompts" />
 					<div className="sticky top-0 -mx-5 px-5 pt-4 pb-2 bg-surface-1 z-10">
-						<h2 className="flex items-center gap-2 text-base font-semibold text-text-primary m-0">
+						<h2 className="flex items-center gap-2 text-base font-medium text-text-primary m-0">
 							<GitCommit size={16} className="text-text-secondary" />
 							Git Prompts
 						</h2>
 					</div>
 					<div className="rounded-lg border border-border bg-surface-0 px-4 py-3 mb-4">
-						<p className="text-text-secondary text-[13px] mt-0 mb-2">
+						<p className="text-text-secondary text-ui mt-0 mb-2">
 							Modify the prompts sent to the agent when using Commit or Make PR on tasks in Review.
 						</p>
 						<div className="flex items-center justify-between gap-2 mb-2">
@@ -945,18 +943,18 @@ export function RuntimeSettingsDialog({
 							onChange={(event) => handleSelectedPromptChange(event.target.value)}
 							placeholder={selectedPromptPlaceholder}
 							disabled={controlsDisabled}
-							className="w-full rounded-md border border-border bg-surface-2 p-3 text-[13px] text-text-primary font-mono placeholder:text-text-tertiary focus:border-border-focus focus:outline-none resize-none disabled:opacity-40"
+							className="w-full rounded-md border border-border bg-surface-2 p-3 text-ui text-text-primary font-mono placeholder:text-text-tertiary focus:border-border-focus focus:outline-none resize-none disabled:opacity-40"
 						/>
-						<p className="text-text-secondary text-[13px] mt-2 mb-0">
+						<p className="text-text-secondary text-ui mt-2 mb-0">
 							Use{" "}
 							<InlineUtilityButton
 								text={
 									copiedVariableToken === TASK_GIT_BASE_REF_PROMPT_VARIABLE.token
-										? "Copied!"
+										? "Copied"
 										: TASK_GIT_BASE_REF_PROMPT_VARIABLE.token
 								}
 								monospace
-								widthCh={Math.max(TASK_GIT_BASE_REF_PROMPT_VARIABLE.token.length, "Copied!".length) + 2}
+								widthCh={Math.max(TASK_GIT_BASE_REF_PROMPT_VARIABLE.token.length, "Copied".length) + 2}
 								onClick={() => {
 									handleCopyVariableToken(TASK_GIT_BASE_REF_PROMPT_VARIABLE.token);
 								}}
@@ -969,7 +967,7 @@ export function RuntimeSettingsDialog({
 					{/* ---- Notifications ---- */}
 					<div data-settings-section="notifications" />
 					<div className="sticky top-0 -mx-5 px-5 pt-4 pb-2 bg-surface-1 z-10">
-						<h2 className="flex items-center gap-2 text-base font-semibold text-text-primary m-0">
+						<h2 className="flex items-center gap-2 text-base font-medium text-text-primary m-0">
 							<Bell size={16} className="text-text-secondary" />
 							Notifications
 						</h2>
@@ -984,10 +982,10 @@ export function RuntimeSettingsDialog({
 							>
 								<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
 							</RadixSwitch.Root>
-							<span className="text-[13px] text-text-primary">Notify when a task is ready for review</span>
+							<span className="text-ui text-text-primary">Notify when a task is ready for review</span>
 						</div>
 						<div className="flex items-center gap-2 mt-2">
-							<p className="text-text-secondary text-[13px] m-0">
+							<p className="text-text-secondary text-ui m-0">
 								Browser permission: {formatNotificationPermissionStatus(notificationPermission)}
 							</p>
 							{notificationPermission !== "granted" && notificationPermission !== "unsupported" ? (
@@ -1003,15 +1001,13 @@ export function RuntimeSettingsDialog({
 					{/* ---- Appearance ---- */}
 					<div data-settings-section="appearance" />
 					<div className="sticky top-0 -mx-5 px-5 pt-4 pb-2 bg-surface-1 z-10">
-						<h2 className="flex items-center gap-2 text-base font-semibold text-text-primary m-0">
+						<h2 className="flex items-center gap-2 text-base font-medium text-text-primary m-0">
 							<Palette size={16} className="text-text-secondary" />
 							Appearance
 						</h2>
 					</div>
 					<div className="rounded-lg border border-border bg-surface-0 px-4 py-3 mb-4">
-						<h6 className="text-[12px] font-semibold uppercase tracking-wider text-text-secondary m-0 mb-2">
-							Theme
-						</h6>
+						<h6 className="text-label font-medium text-text-secondary m-0 mb-2">Theme</h6>
 						<div className="min-w-0 w-1/2 max-w-full">
 							<RadixSelect.Root
 								value={draftThemeId}
@@ -1026,7 +1022,7 @@ export function RuntimeSettingsDialog({
 								}}
 							>
 								<RadixSelect.Trigger
-									className="flex h-9 w-full cursor-pointer items-center justify-between rounded-md border border-border-bright bg-surface-2 px-3 text-[13px] text-text-primary outline-none hover:bg-surface-3 hover:border-border-bright focus:border-border-focus focus:outline-none"
+									className="flex h-9 w-full cursor-pointer items-center justify-between rounded-md border border-border-bright bg-surface-2 px-3 text-ui text-text-primary outline-none hover:bg-surface-3 hover:border-border-bright focus:border-border-focus focus:outline-none"
 									aria-label="Theme"
 								>
 									<span className="flex items-center gap-2.5">
@@ -1063,14 +1059,14 @@ export function RuntimeSettingsDialog({
 												if (groupThemes.length === 0) return null;
 												return (
 													<RadixSelect.Group key={group.key}>
-														<RadixSelect.Label className="px-2 pt-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
+														<RadixSelect.Label className="px-2 pt-2 pb-1 text-micro font-medium text-text-tertiary">
 															{group.label}
 														</RadixSelect.Label>
 														{groupThemes.map((theme) => (
 															<RadixSelect.Item
 																key={theme.id}
 																value={theme.id}
-																className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] text-text-secondary outline-none data-highlighted:bg-surface-3 data-highlighted:text-text-primary data-[state=checked]:text-text-primary"
+																className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-ui text-text-secondary outline-none data-highlighted:bg-surface-3 data-highlighted:text-text-primary data-[state=checked]:text-text-primary"
 																onMouseEnter={() => previewThemeId(theme.id)}
 																onFocus={() => previewThemeId(theme.id)}
 															>
@@ -1094,19 +1090,17 @@ export function RuntimeSettingsDialog({
 							</RadixSelect.Root>
 						</div>
 
-						<h6 className="text-[12px] font-semibold uppercase tracking-wider text-text-secondary mt-5 mb-2">
-							Layout
-						</h6>
+						<h6 className="text-label font-medium text-text-secondary mt-5 mb-2">Layout</h6>
 						<Button size="sm" onClick={resetLayoutCustomizations}>
 							Reset layout
 						</Button>
-						<p className="text-text-secondary text-[13px] mt-2 mb-0">
+						<p className="text-text-secondary text-ui mt-2 mb-0">
 							Reset sidebar, split pane, and terminal resize customizations back to their defaults.
 						</p>
 					</div>
 					<div data-settings-section="project" />
 					<div className="sticky top-0 -mx-5 px-5 pt-4 pb-2 bg-surface-1 z-10">
-						<h2 className="flex items-center gap-2 text-base font-semibold text-text-primary m-0">
+						<h2 className="flex items-center gap-2 text-base font-medium text-text-primary m-0">
 							<FolderOpen size={16} className="text-text-secondary" />
 							Project
 						</h2>
@@ -1127,10 +1121,7 @@ export function RuntimeSettingsDialog({
 					</p>
 					<div className="rounded-lg border border-border bg-surface-0 px-4 py-3 mb-4">
 						<div className="flex items-center justify-between mb-2">
-							<h6
-								ref={shortcutsSectionRef}
-								className="text-[12px] font-semibold uppercase tracking-wider text-text-secondary m-0"
-							>
+							<h6 ref={shortcutsSectionRef} className="text-label font-medium text-text-secondary m-0">
 								Script shortcuts
 							</h6>
 							<Button
@@ -1214,12 +1205,12 @@ export function RuntimeSettingsDialog({
 							</div>
 						))}
 						{shortcuts.length === 0 ? (
-							<p className="text-text-secondary text-[13px]">No shortcuts configured.</p>
+							<p className="text-text-secondary text-ui">No shortcuts configured.</p>
 						) : null}
 					</div>
 
 					{saveError ? (
-						<div className="flex gap-2 rounded-md border border-status-red/30 bg-status-red/5 p-3 text-[13px]">
+						<div className="flex gap-2 rounded-md border border-status-red/30 bg-status-red/5 p-3 text-ui">
 							<span className="text-text-primary">{saveError}</span>
 						</div>
 					) : null}

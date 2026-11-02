@@ -87,7 +87,7 @@ export function OpenWorkspaceButton({
 										type="button"
 										key={option.id}
 										className={cn(
-											"flex w-full items-center gap-2 px-2.5 py-1.5 text-[13px] text-text-primary rounded-md hover:bg-surface-3 text-left cursor-pointer",
+											"flex w-full items-center gap-2 px-2.5 py-1.5 text-ui text-text-primary rounded-md hover:bg-surface-3 text-left cursor-pointer",
 											isActive && "bg-surface-3",
 										)}
 										onClick={() => {

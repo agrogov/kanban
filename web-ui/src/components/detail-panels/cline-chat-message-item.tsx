@@ -44,7 +44,7 @@ function ToolMessageBlock({ message }: { message: ClineChatMessage }): ReactElem
 				) : null}
 				<span
 					className={cn(
-						"shrink-0 font-semibold group-hover:text-text-primary",
+						"shrink-0 font-medium group-hover:text-text-primary",
 						expanded ? "text-text-primary" : "text-text-secondary",
 					)}
 				>
@@ -141,7 +141,7 @@ function ReasoningMessageBlock({ message }: { message: ClineChatMessage }): Reac
 					<Brain size={14} className="shrink-0 text-text-tertiary" />
 					<span
 						className={cn(
-							"shrink-0 font-semibold group-hover:text-text-secondary",
+							"shrink-0 font-medium group-hover:text-text-secondary",
 							expanded ? "text-text-secondary" : "text-text-tertiary",
 						)}
 					>
@@ -200,7 +200,7 @@ export const ClineChatMessageItem = React.memo(function ClineChatMessageItem({
 	const label = message.role === "status" ? "Status" : "System";
 	return (
 		<div className="max-w-[85%] rounded-md border border-border bg-surface-3/70 px-3 py-2 text-sm select-text whitespace-pre-wrap break-all text-text-secondary">
-			<div className="mb-1 text-xs uppercase tracking-wide text-text-tertiary">{label}</div>
+			<div className="mb-1 text-xs text-text-tertiary">{label}</div>
 			{message.content}
 		</div>
 	);

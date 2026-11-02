@@ -43,6 +43,11 @@
 	--font-sans: "Geist", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 	--font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
+	/* Type scale for dense UI text (no line-height baked in, unlike text-xs) */
+	--text-micro: 11px;
+	--text-label: 12px;
+	--text-ui: 13px;
+
 	/* Border radius */
 	--radius-sm: 4px;
 	--radius-md: 6px;

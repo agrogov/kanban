@@ -543,7 +543,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 										onChatAgentReasoningEffortChange?.(effort);
 									}}
 									aria-label="Reasoning effort"
-									className="!h-7 max-w-[150px] text-[11px]"
+									className="!h-7 max-w-[150px] text-micro"
 								>
 									<option value="">Default effort</option>
 									<option value="low">Low</option>

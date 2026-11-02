@@ -333,7 +333,7 @@ function AgentTerminalPanelLayout({
 								<ContextMenu.Item
 									key={label}
 									disabled={requiresSelection && !canCopy}
-									className="flex items-center rounded-sm px-2 py-1.5 text-[13px] text-text-primary cursor-pointer outline-none data-[disabled]:cursor-default data-[disabled]:text-text-tertiary data-[highlighted]:bg-surface-3"
+									className="flex items-center rounded-sm px-2 py-1.5 text-ui text-text-primary cursor-pointer outline-none data-[disabled]:cursor-default data-[disabled]:text-text-tertiary data-[highlighted]:bg-surface-3"
 									onSelect={() => run(sessionControls)}
 								>
 									{label}
@@ -344,7 +344,7 @@ function AgentTerminalPanelLayout({
 				</ContextMenu.Root>
 			</div>
 			{lastError ? (
-				<div className="flex gap-2 rounded-none border-t border-status-red/30 bg-status-red/10 p-3 text-[13px] text-status-red">
+				<div className="flex gap-2 rounded-none border-t border-status-red/30 bg-status-red/10 p-3 text-ui text-status-red">
 					{lastError}
 				</div>
 			) : null}

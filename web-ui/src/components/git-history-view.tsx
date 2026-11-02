@@ -169,7 +169,7 @@ export function GitHistoryView({
 				style={{ flex: 1, background: "var(--color-surface-0)" }}
 			>
 				<GitBranch size={48} />
-				<h3 className="font-semibold text-text-primary">No project selected</h3>
+				<h3 className="font-medium text-text-primary">No project selected</h3>
 			</div>
 		);
 	}

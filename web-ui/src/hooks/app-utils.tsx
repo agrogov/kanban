@@ -140,7 +140,7 @@ export const renderTask = (
 		<button
 			key={task.id}
 			type="button"
-			className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-[13px] text-text-primary rounded-md hover:bg-surface-3 text-left ${modifiers.active ? "bg-surface-3" : ""}`}
+			className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-ui text-text-primary rounded-md hover:bg-surface-3 text-left ${modifiers.active ? "bg-surface-3" : ""}`}
 			disabled={modifiers.disabled}
 			onClick={handleClick}
 			onFocus={handleFocus}

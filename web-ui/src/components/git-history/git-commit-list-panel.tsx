@@ -351,10 +351,8 @@ export function GitCommitListPanel({
 			<div
 				style={{
 					padding: "10px 12px 6px",
-					fontSize: 10,
-					fontWeight: 600,
-					textTransform: "uppercase",
-					letterSpacing: "0.05em",
+					fontSize: 11,
+					fontWeight: 500,
 					color: "var(--color-text-tertiary)",
 				}}
 			>
@@ -484,8 +482,8 @@ export function GitCommitListPanel({
 											alignItems: "center",
 											justifyContent: "center",
 											flexShrink: 0,
-											fontSize: 10,
-											fontWeight: 600,
+											fontSize: 11,
+											fontWeight: 500,
 											color: "white",
 										}}
 									>

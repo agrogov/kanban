@@ -404,7 +404,7 @@ function PathTabContent({
 	return (
 		<form onSubmit={handleSubmit} className="flex flex-col gap-3">
 			<div>
-				<span className="block text-[12px] text-text-secondary mb-1.5">Directory path</span>
+				<span className="block text-label text-text-secondary mb-1.5">Directory path</span>
 				<DirectoryAutocomplete
 					inputRef={pathInputRef}
 					value={pathInput}
@@ -418,10 +418,10 @@ function PathTabContent({
 			</div>
 			{pendingGitInitPath !== null ? (
 				<div className="rounded-md border border-status-orange/30 bg-status-orange/5 px-3 py-2.5 flex flex-col gap-2">
-					<p className="text-[13px] text-text-primary">
+					<p className="text-ui text-text-primary">
 						This directory is not a git repository. Kanban requires git to manage worktrees for tasks.
 					</p>
-					<p className="font-mono text-[11px] text-text-secondary break-all">{pendingGitInitPath}</p>
+					<p className="font-mono text-micro text-text-secondary break-all">{pendingGitInitPath}</p>
 					<Button variant="primary" size="sm" type="submit" disabled={isInitializingGit} className="self-start">
 						{isInitializingGit ? (
 							<>
@@ -487,7 +487,7 @@ function CloneTabContent({
 	return (
 		<form onSubmit={handleSubmit} className="flex flex-col gap-3">
 			<div>
-				<label htmlFor="add-project-git-url-input" className="block text-[12px] text-text-secondary mb-1.5">
+				<label htmlFor="add-project-git-url-input" className="block text-label text-text-secondary mb-1.5">
 					Git repository URL
 				</label>
 				<input
@@ -497,14 +497,14 @@ function CloneTabContent({
 					value={gitUrlInput}
 					onChange={(e) => setGitUrlInput(e.target.value)}
 					placeholder="e.g. https://github.com/user/repo.git"
-					className="w-full h-8 px-2.5 text-[13px] font-mono rounded-md border border-border bg-surface-2 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent"
+					className="w-full h-8 px-2.5 text-ui font-mono rounded-md border border-border bg-surface-2 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent"
 					disabled={isCloning}
 					aria-label="Git URL input"
 				/>
 			</div>
 			<div className="grid grid-cols-2 gap-2">
 				<div>
-					<span className="block text-[12px] text-text-secondary mb-1.5">Clone into</span>
+					<span className="block text-label text-text-secondary mb-1.5">Clone into</span>
 					<DirectoryAutocomplete
 						value={cloneDestInput}
 						onChange={setCloneDestInput}
@@ -516,7 +516,7 @@ function CloneTabContent({
 					/>
 				</div>
 				<div>
-					<label htmlFor="add-project-folder-name-input" className="block text-[12px] text-text-secondary mb-1.5">
+					<label htmlFor="add-project-folder-name-input" className="block text-label text-text-secondary mb-1.5">
 						Folder name
 					</label>
 					<input
@@ -525,14 +525,14 @@ function CloneTabContent({
 						value={cloneFolderName}
 						onChange={(e) => setCloneFolderName(e.target.value.replace(/[\\/]/g, ""))}
 						placeholder={derivedName || "repo-name"}
-						className="w-full h-8 px-2.5 text-[13px] font-mono rounded-md border border-border bg-surface-2 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent"
+						className="w-full h-8 px-2.5 text-ui font-mono rounded-md border border-border bg-surface-2 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent"
 						disabled={isCloning}
 						aria-label="Clone folder name"
 					/>
 				</div>
 			</div>
 			{isCloning ? (
-				<div className="flex items-center gap-2 text-[13px] text-text-secondary">
+				<div className="flex items-center gap-2 text-ui text-text-secondary">
 					<Spinner size={14} />
 					Cloning repository... This may take a moment.
 				</div>

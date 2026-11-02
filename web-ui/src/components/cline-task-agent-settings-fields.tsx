@@ -177,7 +177,7 @@ export function ClineTaskAgentSettingsFields({
 	return (
 		<div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
 			<div className="min-w-0">
-				<span className="text-[11px] text-text-secondary block mb-1">
+				<span className="text-micro text-text-secondary block mb-1">
 					Provider{isLoadingProviders ? " (loading\u2026)" : ""}
 				</span>
 				<SearchSelectDropdown
@@ -222,7 +222,7 @@ export function ClineTaskAgentSettingsFields({
 			</div>
 			{showModelPicker ? (
 				<div className="min-w-0">
-					<span className="text-[11px] text-text-secondary block mb-1">
+					<span className="text-micro text-text-secondary block mb-1">
 						Model{isLoadingModels ? " (loading\u2026)" : ""}
 					</span>
 					<ClineChatModelSelector

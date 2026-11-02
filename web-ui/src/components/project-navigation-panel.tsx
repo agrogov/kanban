@@ -237,7 +237,7 @@ export function ProjectNavigationPanel({
 								onSelectProject(project.id);
 							}}
 							className={cn(
-								"rounded-md text-xs font-semibold shrink-0 border-0 cursor-pointer flex items-center justify-center",
+								"rounded-md text-xs font-medium shrink-0 border-0 cursor-pointer flex items-center justify-center",
 								isMobile ? "w-11 h-11" : "w-8 h-8",
 								isCurrent
 									? "bg-accent text-accent-fg"
@@ -298,7 +298,7 @@ export function ProjectNavigationPanel({
 			)}
 			<div style={{ padding: "12px 12px 8px" }}>
 				<div className="flex items-center justify-between">
-					<div className="font-semibold text-base flex items-baseline gap-1.5">
+					<div className="font-medium text-base flex items-baseline gap-1.5">
 						<ClineIcon size={18} className="text-text-primary shrink-0 self-center" />
 						Cline <span className="text-text-secondary font-normal text-xs">v{__APP_VERSION__}</span>
 					</div>
@@ -506,7 +506,7 @@ function TerminalAgentHints(): React.ReactElement {
 				<button
 					type="button"
 					onClick={restore}
-					className="flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[11px] text-text-tertiary hover:text-text-secondary"
+					className="flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-micro text-text-tertiary hover:text-text-secondary"
 				>
 					<Lightbulb size={11} />
 					Show tips
@@ -517,7 +517,7 @@ function TerminalAgentHints(): React.ReactElement {
 	return (
 		<div className="shrink-0 mx-2 mt-1 mb-1 rounded-md border border-border bg-surface-2/60 px-3 py-2">
 			<div className="flex items-center justify-between mb-1.5">
-				<span className="text-[11px] font-medium text-status-gold flex items-center gap-1">
+				<span className="text-micro font-medium text-status-gold flex items-center gap-1">
 					<Lightbulb size={11} />
 					Tips
 				</span>
@@ -532,7 +532,7 @@ function TerminalAgentHints(): React.ReactElement {
 			</div>
 			<ul className="m-0 list-none space-y-1 pl-0">
 				{TERMINAL_AGENT_HINTS.map((item) => (
-					<li key={item.label} className="flex items-start gap-1.5 text-[11px] text-text-primary">
+					<li key={item.label} className="flex items-start gap-1.5 text-micro text-text-primary">
 						<span className="mt-[5px] block h-1 w-1 shrink-0 rounded-full bg-text-tertiary" />
 						<span>
 							<span className="font-medium">{item.label}.</span> {item.hint}
@@ -573,7 +573,7 @@ function ProjectSupportFooter({
 					</p>
 					<button
 						type="button"
-						className="m-0 flex cursor-pointer items-center gap-1 self-start border-none bg-transparent p-0 text-xs font-semibold text-text-secondary hover:text-text-primary active:text-text-tertiary disabled:cursor-default disabled:opacity-50"
+						className="m-0 flex cursor-pointer items-center gap-1 self-start border-none bg-transparent p-0 text-xs font-medium text-text-secondary hover:text-text-primary active:text-text-tertiary disabled:cursor-default disabled:opacity-50"
 						disabled={shouldShowFeaturebaseFeedback && isOpening}
 						onClick={handleAction}
 					>
@@ -766,7 +766,7 @@ function ProjectRow({
 				</div>
 				<div
 					className={cn(
-						"font-mono text-[10px] whitespace-nowrap overflow-hidden text-ellipsis",
+						"font-mono text-micro whitespace-nowrap overflow-hidden text-ellipsis",
 						isCurrent ? "text-accent-fg/60" : "text-text-secondary",
 					)}
 				>
@@ -778,7 +778,7 @@ function ProjectRow({
 							<span
 								key={badge.id}
 								className={cn(
-									"inline-flex items-center gap-1 rounded-full text-[10px] px-1.5 py-px font-medium",
+									"inline-flex items-center gap-1 rounded-full text-micro px-1.5 py-px font-medium",
 									isCurrent ? "bg-accent-fg/20 text-accent-fg" : badge.toneClassName,
 								)}
 								title={badge.title}
@@ -819,7 +819,7 @@ function ProjectRow({
 							onCloseAutoFocus={(event) => event.preventDefault()}
 						>
 							<DropdownMenu.Item
-								className="flex items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-status-red cursor-pointer outline-none data-[highlighted]:bg-surface-3"
+								className="flex items-center gap-2 rounded-sm px-2 py-1.5 text-ui text-status-red cursor-pointer outline-none data-[highlighted]:bg-surface-3"
 								onSelect={() => onRemove(project.id)}
 							>
 								Delete

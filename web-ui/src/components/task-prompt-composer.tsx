@@ -384,7 +384,7 @@ export function TaskPromptComposer({
 						placeholder={placeholder ?? "Describe the task"}
 						disabled={disabled}
 						className={cn(
-							"w-full rounded-md border bg-surface-3 p-3 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none",
+							"w-full rounded-md border bg-surface-3 p-3 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none",
 							isDragOver ? "border-accent border-dashed" : "border-border-bright",
 						)}
 						style={{
@@ -397,7 +397,7 @@ export function TaskPromptComposer({
 				</InlineCompletionPicker>
 				{isDragOver ? (
 					<div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-accent/5">
-						<div className="flex items-center gap-1.5 text-[12px] text-accent font-medium">
+						<div className="flex items-center gap-1.5 text-label text-accent font-medium">
 							<ImagePlus size={14} />
 							<span>Drop image here</span>
 						</div>

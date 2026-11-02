@@ -309,7 +309,7 @@ export function TaskAgentModelPicker({
 				<Collapsible.Trigger asChild>
 					<button
 						type="button"
-						className="inline-flex w-fit items-center gap-1 text-[12px] text-text-secondary hover:text-text-primary cursor-pointer bg-transparent border-none p-0"
+						className="inline-flex w-fit items-center gap-1 text-label text-text-secondary hover:text-text-primary cursor-pointer bg-transparent border-none p-0"
 					>
 						<ChevronDown
 							size={12}
@@ -321,7 +321,7 @@ export function TaskAgentModelPicker({
 				<Collapsible.Content className="pt-2">
 					<div className="flex flex-col gap-2">
 						<div className="w-full sm:w-1/2 min-w-0">
-							<span className="text-[11px] text-text-secondary block mb-1">Agent</span>
+							<span className="text-micro text-text-secondary block mb-1">Agent</span>
 							<NativeSelect
 								size="sm"
 								fill

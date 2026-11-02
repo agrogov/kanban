@@ -19,7 +19,7 @@ function getNativeSelectClassName({
 } = {}): string {
 	return cn(
 		nativeSelectBaseClassName,
-		size === "sm" ? "h-7 text-[12px]" : "h-8 text-[13px]",
+		size === "sm" ? "h-7 text-label" : "h-8 text-ui",
 		withCustomChevron ? "appearance-none pl-2 pr-7" : "px-2",
 		fill && "w-full",
 		className,

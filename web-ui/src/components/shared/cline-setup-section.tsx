@@ -280,7 +280,7 @@ export function ClineSetupSection({
 	return (
 		<>
 			<div className="mt-2">
-				<p className="text-text-primary font-semibold text-[12px] mt-0 mb-2">API provider</p>
+				<p className="text-text-primary font-medium text-label mt-0 mb-2">API provider</p>
 				<div className="min-w-0 w-1/2 max-w-full">
 					<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
 						<div className="min-w-0">
@@ -343,7 +343,7 @@ export function ClineSetupSection({
 					</div>
 				</div>
 				{controller.isLoadingProviderCatalog ? (
-					<p className="text-text-secondary text-[12px] mt-1 mb-0">Fetching Cline providers...</p>
+					<p className="text-text-secondary text-label mt-1 mb-0">Fetching Cline providers...</p>
 				) : null}
 				<div
 					className="grid gap-2 mt-3"
@@ -351,29 +351,29 @@ export function ClineSetupSection({
 				>
 					{controller.isOauthProviderSelected ? null : (
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">API key</p>
+							<p className="text-text-secondary text-label mt-0 mb-1">API key</p>
 							<input
 								type="password"
 								value={controller.apiKey}
 								onChange={(event) => controller.setApiKey(event.target.value)}
 								placeholder={apiKeyPlaceholder}
 								disabled={controlsDisabled}
-								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 							{providerEnvHint ? (
-								<p className="text-text-tertiary text-[11px] mt-1 mb-0 break-all">Or use {providerEnvHint}</p>
+								<p className="text-text-tertiary text-micro mt-1 mb-0 break-all">Or use {providerEnvHint}</p>
 							) : null}
 						</div>
 					)}
 					{shouldShowBaseUrlField ? (
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">Base URL</p>
+							<p className="text-text-secondary text-label mt-0 mb-1">Base URL</p>
 							<input
 								value={controller.baseUrl}
 								onChange={(event) => controller.setBaseUrl(event.target.value)}
 								placeholder="https://api.cline.bot"
 								disabled={controlsDisabled}
-								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 						</div>
 					) : null}
@@ -381,17 +381,17 @@ export function ClineSetupSection({
 				{isBedrockProvider ? (
 					<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS region</p>
+							<p className="text-text-secondary text-label mt-0 mb-1">AWS region</p>
 							<input
 								value={controller.awsRegion}
 								onChange={(event) => controller.setAwsRegion(event.target.value)}
 								placeholder="us-east-1"
 								disabled={controlsDisabled}
-								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 						</div>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">Auth mode</p>
+							<p className="text-text-secondary text-label mt-0 mb-1">Auth mode</p>
 							<NativeSelect
 								fill
 								value={controller.awsAuthentication}
@@ -407,56 +407,56 @@ export function ClineSetupSection({
 							</NativeSelect>
 						</div>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS profile</p>
+							<p className="text-text-secondary text-label mt-0 mb-1">AWS profile</p>
 							<input
 								value={controller.awsProfile}
 								onChange={(event) => controller.setAwsProfile(event.target.value)}
 								placeholder="default"
 								disabled={controlsDisabled}
-								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 						</div>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">Bedrock endpoint</p>
+							<p className="text-text-secondary text-label mt-0 mb-1">Bedrock endpoint</p>
 							<input
 								value={controller.awsEndpoint}
 								onChange={(event) => controller.setAwsEndpoint(event.target.value)}
 								placeholder="https://bedrock-runtime.us-east-1.amazonaws.com"
 								disabled={controlsDisabled}
-								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 						</div>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS access key</p>
+							<p className="text-text-secondary text-label mt-0 mb-1">AWS access key</p>
 							<input
 								type="password"
 								value={controller.awsAccessKey}
 								onChange={(event) => controller.setAwsAccessKey(event.target.value)}
 								placeholder="AKIA..."
 								disabled={controlsDisabled}
-								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 						</div>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS secret key</p>
+							<p className="text-text-secondary text-label mt-0 mb-1">AWS secret key</p>
 							<input
 								type="password"
 								value={controller.awsSecretKey}
 								onChange={(event) => controller.setAwsSecretKey(event.target.value)}
 								placeholder="••••••••"
 								disabled={controlsDisabled}
-								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 						</div>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">AWS session token</p>
+							<p className="text-text-secondary text-label mt-0 mb-1">AWS session token</p>
 							<input
 								type="password"
 								value={controller.awsSessionToken}
 								onChange={(event) => controller.setAwsSessionToken(event.target.value)}
 								placeholder="Optional"
 								disabled={controlsDisabled}
-								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 						</div>
 					</div>
@@ -464,46 +464,46 @@ export function ClineSetupSection({
 				{isVertexProvider ? (
 					<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">GCP project ID</p>
+							<p className="text-text-secondary text-label mt-0 mb-1">GCP project ID</p>
 							<input
 								value={controller.gcpProjectId}
 								onChange={(event) => controller.setGcpProjectId(event.target.value)}
 								placeholder="my-gcp-project"
 								disabled={controlsDisabled}
-								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 						</div>
 						<div className="min-w-0">
-							<p className="text-text-secondary text-[12px] mt-0 mb-1">GCP region</p>
+							<p className="text-text-secondary text-label mt-0 mb-1">GCP region</p>
 							<input
 								value={controller.gcpRegion}
 								onChange={(event) => controller.setGcpRegion(event.target.value)}
 								placeholder="us-central1"
 								disabled={controlsDisabled}
-								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+								className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							/>
 						</div>
 					</div>
 				) : null}
 				{controller.isOauthProviderSelected ? (
 					<>
-						<p className="text-text-secondary text-[12px] mt-1 mb-0">
+						<p className="text-text-secondary text-label mt-1 mb-0">
 							Status: {controller.oauthConfigured ? "Signed in" : "Not signed in"}
 						</p>
 						{controller.oauthAccountId ? (
-							<p className="text-text-secondary text-[12px] mt-1 mb-0">
+							<p className="text-text-secondary text-label mt-1 mb-0">
 								Account ID: <span className="text-text-primary">{controller.oauthAccountId}</span>
 							</p>
 						) : null}
 						{controller.oauthExpiresAt ? (
-							<p className="text-text-secondary text-[12px] mt-1 mb-0">
+							<p className="text-text-secondary text-label mt-1 mb-0">
 								Expiry: <span className="text-text-primary">{formatExpiry(controller.oauthExpiresAt)}</span>
 							</p>
 						) : null}
 						{controller.isRunningOauthLogin && controller.deviceAuthInfo ? (
 							<div className="mt-2 rounded-md border border-border bg-surface-2 p-3">
-								<p className="text-text-secondary text-[13px] font-medium mt-0 mb-2">Sign in to Cline</p>
-								<ol className="list-decimal pl-4 text-[12px] text-text-primary m-0">
+								<p className="text-text-secondary text-ui font-medium mt-0 mb-2">Sign in to Cline</p>
+								<ol className="list-decimal pl-4 text-label text-text-primary m-0">
 									<li>
 										Go to this URL:{" "}
 										<a
@@ -518,7 +518,7 @@ export function ClineSetupSection({
 									<li className="mt-2">
 										Enter this code:
 										<div className="mt-1 flex items-center gap-2">
-											<p className="text-text-primary text-[18px] font-mono font-bold tracking-wider m-0">
+											<p className="text-text-primary text-[18px] font-mono font-bold m-0">
 												{controller.deviceAuthInfo.userCode}
 											</p>
 											<Button
@@ -563,14 +563,14 @@ export function ClineSetupSection({
 			{accountSection ? <div className="mt-4">{accountSection}</div> : null}
 
 			<div className="mt-4">
-				<p className="text-text-primary font-semibold text-[12px] mt-0 mb-2">Model</p>
+				<p className="text-text-primary font-medium text-label mt-0 mb-2">Model</p>
 				<div
 					className="grid gap-2"
 					style={{ gridTemplateColumns: controller.selectedModelSupportsReasoningEffort ? "1fr 1fr" : "1fr" }}
 				>
 					<div className="min-w-0">
 						<div className="mb-1 flex items-center justify-between gap-2 h-7">
-							<p className="text-text-secondary text-[12px] m-0">Model ID</p>
+							<p className="text-text-secondary text-label m-0">Model ID</p>
 							{shouldShowBaseUrlField ? (
 								<Tooltip side="bottom" content="Save settings and refresh models">
 									<Button
@@ -620,7 +620,7 @@ export function ClineSetupSection({
 					{controller.selectedModelSupportsReasoningEffort ? (
 						<div className="min-w-0">
 							<div className="mb-1 flex items-center h-7">
-								<p className="text-text-secondary text-[12px] m-0">Reasoning effort</p>
+								<p className="text-text-secondary text-label m-0">Reasoning effort</p>
 							</div>
 							<SearchSelectDropdown
 								options={CLINE_REASONING_EFFORT_OPTIONS}
@@ -642,14 +642,14 @@ export function ClineSetupSection({
 					) : null}
 				</div>
 				{controller.isLoadingProviderModels ? (
-					<p className="text-text-secondary text-[12px] mt-1 mb-0">Fetching Cline models...</p>
+					<p className="text-text-secondary text-label mt-1 mb-0">Fetching Cline models...</p>
 				) : null}
 			</div>
 
 			{mcpController && showMcpSettings ? (
 				<>
 					<div className="flex items-center justify-between mt-4 mb-2">
-						<h6 className="font-semibold text-[12px] text-text-primary m-0">MCP servers</h6>
+						<h6 className="font-medium text-label text-text-primary m-0">MCP servers</h6>
 						<Button
 							variant="ghost"
 							size="sm"
@@ -660,7 +660,7 @@ export function ClineSetupSection({
 							Add
 						</Button>
 					</div>
-					<p className="text-text-secondary text-[12px] mt-0 mb-2">
+					<p className="text-text-secondary text-label mt-0 mb-2">
 						Configure Cline MCP servers for tool integrations.
 					</p>
 					{mcpController.mcpSettingsPath ? (
@@ -679,8 +679,8 @@ export function ClineSetupSection({
 						<div className="rounded-md border border-border bg-surface-1 px-3 py-2 mb-2">
 							<div className="flex items-center justify-between gap-3">
 								<div className="min-w-0">
-									<p className="text-text-primary text-[13px] font-medium mt-0 mb-0.5">Linear</p>
-									<p className="text-text-secondary text-[12px] mt-0 mb-0">
+									<p className="text-text-primary text-ui font-medium mt-0 mb-0.5">Linear</p>
+									<p className="text-text-secondary text-label mt-0 mb-0">
 										Connect Linear for project management tools.
 									</p>
 								</div>
@@ -706,11 +706,11 @@ export function ClineSetupSection({
 					) : null}
 
 					{mcpController.isLoadingMcpSettings ? (
-						<p className="text-text-secondary text-[12px] mt-1 mb-0">Loading MCP settings...</p>
+						<p className="text-text-secondary text-label mt-1 mb-0">Loading MCP settings...</p>
 					) : null}
 
 					{!mcpController.isLoadingMcpSettings && mcpController.mcpServers.length === 0 ? (
-						<p className="text-text-secondary text-[12px] mt-1 mb-0">No MCP servers configured.</p>
+						<p className="text-text-secondary text-label mt-1 mb-0">No MCP servers configured.</p>
 					) : null}
 
 					{mcpController.mcpServers.map((server, serverIndex) => {
@@ -724,7 +724,7 @@ export function ClineSetupSection({
 								<div className="rounded-md border border-border p-2 flex-1 min-w-0">
 									<div className="grid gap-2" style={{ gridTemplateColumns: "1.2fr 1fr" }}>
 										<div className="min-w-0">
-											<p className="text-text-secondary text-[12px] mt-0 mb-1">Server name</p>
+											<p className="text-text-secondary text-label mt-0 mb-1">Server name</p>
 											<input
 												value={server.name}
 												onChange={(event) => {
@@ -735,11 +735,11 @@ export function ClineSetupSection({
 												}}
 												placeholder="linear"
 												disabled={mcpControlsDisabled}
-												className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+												className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 											/>
 										</div>
 										<div className="min-w-0">
-											<p className="text-text-secondary text-[12px] mt-0 mb-1">Transport</p>
+											<p className="text-text-secondary text-label mt-0 mb-1">Transport</p>
 											<NativeSelect
 												fill
 												value={server.type}
@@ -774,7 +774,7 @@ export function ClineSetupSection({
 									{server.type === "stdio" ? (
 										<div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
 											<div className="min-w-0">
-												<p className="text-text-secondary text-[12px] mt-0 mb-1">Command</p>
+												<p className="text-text-secondary text-label mt-0 mb-1">Command</p>
 												<input
 													value={server.command}
 													onChange={(event) => {
@@ -790,11 +790,11 @@ export function ClineSetupSection({
 													}}
 													placeholder="Command"
 													disabled={mcpControlsDisabled}
-													className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+													className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 												/>
 											</div>
 											<div className="min-w-0">
-												<p className="text-text-secondary text-[12px] mt-0 mb-1">Arguments</p>
+												<p className="text-text-secondary text-label mt-0 mb-1">Arguments</p>
 												<input
 													value={(server.args ?? []).join(" ")}
 													onChange={(event) => {
@@ -813,11 +813,11 @@ export function ClineSetupSection({
 													}}
 													placeholder="Args"
 													disabled={mcpControlsDisabled}
-													className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+													className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 												/>
 											</div>
 											<div className="min-w-0" style={{ gridColumn: "1 / -1" }}>
-												<p className="text-text-secondary text-[12px] mt-0 mb-1">Working directory</p>
+												<p className="text-text-secondary text-label mt-0 mb-1">Working directory</p>
 												<input
 													value={server.cwd ?? ""}
 													onChange={(event) => {
@@ -833,13 +833,13 @@ export function ClineSetupSection({
 													}}
 													placeholder="Working directory (optional)"
 													disabled={mcpControlsDisabled}
-													className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+													className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 												/>
 											</div>
 										</div>
 									) : (
 										<div className="min-w-0 mt-2">
-											<p className="text-text-secondary text-[12px] mt-0 mb-1">URL</p>
+											<p className="text-text-secondary text-label mt-0 mb-1">URL</p>
 											<input
 												value={server.url}
 												onChange={(event) => {
@@ -855,21 +855,21 @@ export function ClineSetupSection({
 												}}
 												placeholder="https://example.com/mcp"
 												disabled={mcpControlsDisabled}
-												className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+												className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 											/>
 										</div>
 									)}
 
 									{oauthSupported ? (
 										<div className="mt-2">
-											<p className="text-text-secondary text-[12px] mt-0 mb-1">
+											<p className="text-text-secondary text-label mt-0 mb-1">
 												OAuth:{" "}
 												<span className="text-text-primary">
 													{oauthConfigured ? "Connected" : "Not connected"}
 												</span>
 											</p>
 											{authStatus?.lastError ? (
-												<p className="text-status-red text-[12px] mt-0 mb-1">{authStatus.lastError}</p>
+												<p className="text-status-red text-label mt-0 mb-1">{authStatus.lastError}</p>
 											) : null}
 											<Button
 												variant="default"
@@ -890,7 +890,7 @@ export function ClineSetupSection({
 
 									<label
 										htmlFor={`mcp-disabled-${serverIndex}`}
-										className="flex items-center gap-2 text-[12px] text-text-primary mt-2 cursor-pointer select-none"
+										className="flex items-center gap-2 text-label text-text-primary mt-2 cursor-pointer select-none"
 									>
 										<RadixCheckbox.Root
 											id={`mcp-disabled-${serverIndex}`}

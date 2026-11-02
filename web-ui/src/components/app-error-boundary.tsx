@@ -15,7 +15,7 @@ function AppErrorFallback({ error, resetError }: { error: unknown; resetError: (
 						<TriangleAlert size={18} />
 					</div>
 					<div>
-						<h1 className="text-lg font-semibold">Cline hit an unexpected UI error.</h1>
+						<h1 className="text-lg font-medium">Cline hit an unexpected UI error.</h1>
 						<p className="mt-1 text-sm text-text-secondary">
 							You can try rendering the app again or reload the page.
 						</p>

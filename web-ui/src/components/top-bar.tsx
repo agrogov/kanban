@@ -46,7 +46,7 @@ type CreateShortcutResult = { ok: boolean; message?: string };
 
 const MOBILE_TOUCH_TARGET = "min-w-[44px] min-h-[44px]";
 const HOME_GIT_MENU_ITEM_CLASS =
-	"flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-text-primary outline-none data-[disabled]:cursor-not-allowed data-[highlighted]:bg-surface-3 data-[disabled]:opacity-50";
+	"flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-ui text-text-primary outline-none data-[disabled]:cursor-not-allowed data-[highlighted]:bg-surface-3 data-[disabled]:opacity-50";
 
 function getWorkspacePathSegments(path: string): string[] {
 	return path
@@ -654,7 +654,7 @@ export function TopBar({
 																	type="button"
 																	key={`${shortcut.label}:${shortcut.command}:${shortcutIndex}`}
 																	className={cn(
-																		"flex w-full items-center gap-2 px-2.5 py-1.5 text-[13px] text-text-primary rounded-md hover:bg-surface-3 text-left",
+																		"flex w-full items-center gap-2 px-2.5 py-1.5 text-ui text-text-primary rounded-md hover:bg-surface-3 text-left",
 																		isActive && "bg-surface-3",
 																	)}
 																	onClick={() => onSelectShortcutLabel?.(shortcut.label)}
@@ -670,7 +670,7 @@ export function TopBar({
 														<div className="h-px bg-border my-1" />
 														<button
 															type="button"
-															className="flex w-full items-center gap-2 px-2.5 py-1.5 text-[13px] text-text-primary rounded-md hover:bg-surface-3 text-left"
+															className="flex w-full items-center gap-2 px-2.5 py-1.5 text-ui text-text-primary rounded-md hover:bg-surface-3 text-left"
 															onClick={handleAddShortcut}
 														>
 															<Plus size={14} />
@@ -799,10 +799,10 @@ export function TopBar({
 			>
 				<DialogHeader title="Set up your first script shortcut" icon={<Play size={16} />} />
 				<DialogBody>
-					<p className="text-text-secondary text-[13px] mt-0 mb-2">
+					<p className="text-text-secondary text-ui mt-0 mb-2">
 						Script shortcuts run a command in the bottom terminal so you can quickly run and test your project.
 					</p>
-					<p className="text-text-secondary text-[13px] mt-0 mb-3">
+					<p className="text-text-secondary text-ui mt-0 mb-3">
 						You can always open Settings to add and manage more shortcuts later.
 					</p>
 					<div className="grid gap-2" style={{ gridTemplateColumns: "max-content 1fr 2fr" }}>
@@ -822,9 +822,7 @@ export function TopBar({
 							className="h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none disabled:opacity-60"
 						/>
 					</div>
-					{createShortcutError ? (
-						<p className="text-status-red text-[13px] mt-3 mb-0">{createShortcutError}</p>
-					) : null}
+					{createShortcutError ? <p className="text-status-red text-ui mt-3 mb-0">{createShortcutError}</p> : null}
 				</DialogBody>
 				<DialogFooter>
 					<Button

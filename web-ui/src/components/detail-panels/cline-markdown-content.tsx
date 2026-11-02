@@ -79,13 +79,13 @@ function toCodeString(children: ReactNode): string {
 
 const markdownComponents: Components = {
 	h1: ({ className, ...props }) => (
-		<h1 className={cn("mt-3 text-base font-semibold text-text-primary", className)} {...props} />
+		<h1 className={cn("mt-3 text-base font-medium text-text-primary", className)} {...props} />
 	),
 	h2: ({ className, ...props }) => (
-		<h2 className={cn("mt-3 text-base font-semibold text-text-primary", className)} {...props} />
+		<h2 className={cn("mt-3 text-base font-medium text-text-primary", className)} {...props} />
 	),
 	h3: ({ className, ...props }) => (
-		<h3 className={cn("mt-2 text-sm font-semibold text-text-primary", className)} {...props} />
+		<h3 className={cn("mt-2 text-sm font-medium text-text-primary", className)} {...props} />
 	),
 	p: ({ className, ...props }) => (
 		<p className={cn("leading-snug whitespace-pre-wrap text-sm text-text-primary", className)} {...props} />

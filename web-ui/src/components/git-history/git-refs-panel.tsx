@@ -11,11 +11,11 @@ const ROW_HEIGHT = 30;
 const SELECTED_SUBTLE_TEXT_COLOR = "rgba(255, 255, 255, 0.64)";
 const MATCHED_TEXT_STYLE = {
 	color: "var(--color-status-blue)",
-	fontWeight: 600,
+	fontWeight: 500,
 } as const;
 const MATCHED_TEXT_STYLE_SELECTED = {
 	color: "rgba(255, 255, 255, 0.92)",
-	fontWeight: 600,
+	fontWeight: 500,
 } as const;
 const HEAD_BADGE_BACKGROUND = "color-mix(in srgb, var(--color-status-blue) 15%, transparent)";
 const HEAD_BADGE_BACKGROUND_SELECTED = "color-mix(in srgb, white 18%, transparent)";
@@ -40,7 +40,7 @@ function AheadBehindIndicator({
 				display: "inline-flex",
 				alignItems: "center",
 				gap: 3,
-				fontSize: 10,
+				fontSize: 11,
 				color: isSelected ? SELECTED_SUBTLE_TEXT_COLOR : "var(--color-text-tertiary)",
 				flexShrink: 0,
 			}}
@@ -143,7 +143,7 @@ export function GitRefsPanel({
 					style={{
 						flex: 1,
 						fontSize: 14,
-						fontWeight: 600,
+						fontWeight: 500,
 						color: "var(--color-text-primary)",
 					}}
 				>
@@ -186,7 +186,7 @@ export function GitRefsPanel({
 						style={{ minHeight: 180, padding: 12 }}
 					>
 						<AlertCircle size={48} />
-						<h3 className="font-semibold text-text-primary">Could not load refs</h3>
+						<h3 className="font-medium text-text-primary">Could not load refs</h3>
 						<p className="text-text-secondary">{errorMessage}</p>
 					</div>
 				) : (
@@ -234,7 +234,7 @@ export function GitRefsPanel({
 								<span
 									className="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium"
 									style={{
-										fontSize: 10,
+										fontSize: 11,
 										backgroundColor: isHeadBranchSelected
 											? HEAD_BADGE_BACKGROUND_SELECTED
 											: HEAD_BADGE_BACKGROUND,
@@ -330,10 +330,8 @@ function SectionLabel({ children }: { children: React.ReactNode }): React.ReactE
 		<div
 			style={{
 				padding: "10px 8px 4px",
-				fontSize: 10,
-				fontWeight: 600,
-				letterSpacing: "0.05em",
-				textTransform: "uppercase",
+				fontSize: 11,
+				fontWeight: 500,
 				color: "var(--color-text-tertiary)",
 			}}
 		>

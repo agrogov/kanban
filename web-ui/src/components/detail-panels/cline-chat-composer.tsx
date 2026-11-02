@@ -544,7 +544,7 @@ export function ClineChatComposer({
 									role="tab"
 									aria-selected={mode === "plan"}
 									className={cn(
-										"h-5 rounded-sm px-2 text-[11px] font-medium hover:cursor-pointer",
+										"h-5 rounded-sm px-2 text-micro font-medium hover:cursor-pointer",
 										mode === "plan"
 											? "bg-surface-1 text-text-primary"
 											: "text-text-secondary hover:bg-surface-4 hover:text-text-primary",
@@ -558,7 +558,7 @@ export function ClineChatComposer({
 									role="tab"
 									aria-selected={mode === "act"}
 									className={cn(
-										"h-5 rounded-sm px-2 text-[11px] font-medium hover:cursor-pointer",
+										"h-5 rounded-sm px-2 text-micro font-medium hover:cursor-pointer",
 										mode === "act"
 											? "bg-surface-1 text-text-primary"
 											: "text-text-secondary hover:bg-surface-4 hover:text-text-primary",

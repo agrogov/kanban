@@ -197,7 +197,7 @@ export function DirectoryAutocomplete({
 		<div ref={containerRef} className="relative">
 			{/* Fixed "/" prefix + input */}
 			<div className="flex items-center h-8 rounded-md border border-border bg-surface-2 focus-within:border-accent">
-				<span className="pl-2.5 text-[13px] font-mono text-text-tertiary select-none shrink-0">/</span>
+				<span className="pl-2.5 text-ui font-mono text-text-tertiary select-none shrink-0">/</span>
 				<input
 					ref={inputRefToUse}
 					type="text"
@@ -217,7 +217,7 @@ export function DirectoryAutocomplete({
 						userInteractedRef.current = true;
 					}}
 					placeholder={placeholder}
-					className="flex-1 min-w-0 h-full px-0.5 pr-2.5 text-[13px] font-mono bg-transparent text-text-primary placeholder:text-text-tertiary focus:outline-none border-none"
+					className="flex-1 min-w-0 h-full px-0.5 pr-2.5 text-ui font-mono bg-transparent text-text-primary placeholder:text-text-tertiary focus:outline-none border-none"
 					disabled={disabled}
 					id={id}
 					aria-label={ariaLabel}
@@ -242,7 +242,7 @@ export function DirectoryAutocomplete({
 							role="option"
 							aria-selected={index === highlightedIndex}
 							className={cn(
-								"flex items-center gap-2 px-3 py-1.5 text-[13px] text-text-primary cursor-pointer",
+								"flex items-center gap-2 px-3 py-1.5 text-ui text-text-primary cursor-pointer",
 								index === highlightedIndex ? "bg-surface-3" : "hover:bg-surface-2",
 							)}
 							onMouseDown={(e) => {

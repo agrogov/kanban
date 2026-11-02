@@ -162,7 +162,7 @@ export function AccountOrganizationSection({
 		<div>
 			{showSelector ? (
 				<div className="mb-3">
-					<p className="text-text-secondary text-[12px] mt-0 mb-1">Account</p>
+					<p className="text-text-secondary text-label mt-0 mb-1">Account</p>
 					<div className="flex items-center gap-2">
 						<div className="min-w-0 w-1/2 max-w-full">
 							<SearchSelectDropdown
@@ -192,13 +192,13 @@ export function AccountOrganizationSection({
 			) : null}
 
 			<div className="mb-2">
-				<p className="text-text-secondary text-[12px] mt-0 mb-1">Credits</p>
+				<p className="text-text-secondary text-label mt-0 mb-1">Credits</p>
 				<div className="flex items-center gap-2">
 					<div className="flex items-center gap-1.5">
 						{isLoadingBalance && balanceData === null ? (
 							<Spinner size={14} />
 						) : (
-							<span className="text-[13px] text-text-primary font-medium">
+							<span className="text-ui text-text-primary font-medium">
 								{formatBalance(balanceData?.balance ?? null)}
 							</span>
 						)}
@@ -226,12 +226,12 @@ export function AccountOrganizationSection({
 			</div>
 
 			{loadError ? (
-				<p role="alert" className="text-status-orange text-[13px] mt-0 mb-2">
+				<p role="alert" className="text-status-orange text-ui mt-0 mb-2">
 					{loadError}
 				</p>
 			) : null}
 			{switchError ? (
-				<p role="alert" className="text-status-red text-[13px] mt-0 mb-2">
+				<p role="alert" className="text-status-red text-ui mt-0 mb-2">
 					{switchError}
 				</p>
 			) : null}

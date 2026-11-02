@@ -277,7 +277,7 @@ export function ClineChatModelSelector({
 					optionRefs.current[optionIndex] = node;
 				}}
 				className={cn(
-					"flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px]",
+					"flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-ui",
 					isSelected
 						? "bg-accent text-accent-fg hover:bg-accent"
 						: isActive
@@ -339,9 +339,7 @@ export function ClineChatModelSelector({
 						)}
 					>
 						<div className={cn("p-2", selectedModelSupportsReasoningEffort && "border-r border-border")}>
-							<p className="px-1 pb-1 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
-								Model ID
-							</p>
+							<p className="px-1 pb-1 text-micro font-medium text-text-tertiary">Model ID</p>
 							<input
 								ref={inputRef}
 								className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
@@ -352,11 +350,11 @@ export function ClineChatModelSelector({
 							/>
 							<div ref={menuRef} className="mt-2 max-h-[260px] overflow-y-auto overscroll-contain p-1">
 								{filteredModelOptions.length === 0 ? (
-									<div className="px-2.5 py-1.5 text-[13px] text-text-tertiary">No matching models</div>
+									<div className="px-2.5 py-1.5 text-ui text-text-tertiary">No matching models</div>
 								) : (
 									<>
 										{showRecommendedSection && recommendedItems.length > 0 ? (
-											<div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
+											<div className="px-2.5 py-1.5 text-micro font-medium text-text-tertiary">
 												Recommended models
 											</div>
 										) : null}
@@ -366,7 +364,7 @@ export function ClineChatModelSelector({
 										{showRecommendedSection && recommendedItems.length > 0 && otherItems.length > 0 ? (
 											<>
 												<div className="my-1 border-t border-border" />
-												<div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
+												<div className="px-2.5 py-1.5 text-micro font-medium text-text-tertiary">
 													All models
 												</div>
 											</>
@@ -380,9 +378,7 @@ export function ClineChatModelSelector({
 						</div>
 						{selectedModelSupportsReasoningEffort ? (
 							<div className="p-2">
-								<p className="px-1 pb-1 text-[11px] font-medium uppercase tracking-[0.02em] text-text-tertiary">
-									Reasoning effort
-								</p>
+								<p className="px-1 pb-1 text-micro font-medium text-text-tertiary">Reasoning effort</p>
 								<div className="p-1">
 									{CLINE_REASONING_EFFORT_OPTIONS.map((option) => {
 										const isSelected = option.value === selectedReasoningEffort;
@@ -391,7 +387,7 @@ export function ClineChatModelSelector({
 												type="button"
 												key={option.value}
 												className={cn(
-													"flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px]",
+													"flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-ui",
 													isSelected
 														? "bg-accent text-accent-fg hover:bg-accent"
 														: "text-text-secondary hover:bg-surface-3 hover:text-text-primary",

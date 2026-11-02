@@ -204,7 +204,7 @@ export function TaskInlineCreateCard({
 			<div>
 				{onTitleChange ? (
 					<div className="mb-2">
-						<label htmlFor={`${idPrefix}-title-input`} className="mb-1 block text-[11px] text-text-secondary">
+						<label htmlFor={`${idPrefix}-title-input`} className="mb-1 block text-micro text-text-secondary">
 							Title
 						</label>
 						<input
@@ -212,7 +212,7 @@ export function TaskInlineCreateCard({
 							value={title ?? ""}
 							onChange={(event) => onTitleChange(event.currentTarget.value)}
 							placeholder={deriveTaskTitleFromPrompt(prompt) || "Auto-generated from prompt"}
-							className="h-8 w-full rounded-md border border-border-bright bg-surface-2 px-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
+							className="h-8 w-full rounded-md border border-border-bright bg-surface-2 px-2 text-label text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 						/>
 					</div>
 				) : null}
@@ -231,18 +231,18 @@ export function TaskInlineCreateCard({
 					workspaceId={workspaceId}
 					showAttachImageButton={false}
 				/>
-				<p className="text-[11px] text-text-tertiary mt-1 mb-0">
-					Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to reference
+				<p className="text-micro text-text-tertiary mt-1 mb-0">
+					Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-micro">@file</code> to reference
 					files. Drag and drop or{" "}
-					<code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">{pasteShortcutLabel}</code> to
-					add images.
+					<code className="rounded bg-surface-3 px-1 py-px font-mono text-micro">{pasteShortcutLabel}</code> to add
+					images.
 				</p>
 			</div>
 
 			<div className="flex flex-col gap-2 mt-3">
 				<label
 					htmlFor={planModeId}
-					className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
+					className="flex items-center gap-2 text-label text-text-primary cursor-pointer select-none"
 				>
 					<RadixCheckbox.Root
 						id={planModeId}
@@ -260,7 +260,7 @@ export function TaskInlineCreateCard({
 				</label>
 
 				<div>
-					<span className="text-[11px] text-text-secondary block mb-1">Worktree base ref</span>
+					<span className="text-micro text-text-secondary block mb-1">Worktree base ref</span>
 					<BranchSelectDropdown
 						id={branchSelectId}
 						options={branchOptions}
@@ -276,7 +276,7 @@ export function TaskInlineCreateCard({
 				<div className="flex items-center gap-2 flex-wrap">
 					<label
 						htmlFor={autoReviewEnabledId}
-						className="flex items-center gap-2 text-[12px] text-text-primary cursor-pointer select-none"
+						className="flex items-center gap-2 text-label text-text-primary cursor-pointer select-none"
 					>
 						<RadixCheckbox.Root
 							id={autoReviewEnabledId}

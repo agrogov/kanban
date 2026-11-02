@@ -181,7 +181,7 @@ function RemoteFileBrowserContent({
 		<>
 			{/* Root path indicator */}
 			<div className="px-4 pt-3">
-				<div className="text-[11px] text-text-tertiary font-mono truncate" title={rootPath}>
+				<div className="text-micro text-text-tertiary font-mono truncate" title={rootPath}>
 					Server root: {rootPath}
 				</div>
 			</div>
@@ -193,7 +193,7 @@ function RemoteFileBrowserContent({
 					value={pathInput}
 					onChange={(e) => setPathInput(e.target.value)}
 					placeholder="Type a path and press Enter"
-					className="w-full h-8 px-2 text-[13px] font-mono rounded-md border border-border bg-surface-2 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent"
+					className="w-full h-8 px-2 text-ui font-mono rounded-md border border-border bg-surface-2 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent"
 					aria-label="Directory path input"
 				/>
 			</form>
@@ -208,7 +208,7 @@ function RemoteFileBrowserContent({
 					onClick={onUp}
 					aria-label="Go to parent directory"
 				/>
-				<nav className="flex items-center gap-0.5 min-w-0 overflow-x-auto text-[12px]" aria-label="Breadcrumb">
+				<nav className="flex items-center gap-0.5 min-w-0 overflow-x-auto text-label" aria-label="Breadcrumb">
 					{breadcrumbSegments.map((segment, index) => {
 						const isLast = index === breadcrumbSegments.length - 1;
 						return (
@@ -264,11 +264,11 @@ function DirectoryEntryList({
 				</div>
 			) : error ? (
 				<div className="flex items-center justify-center py-12 px-4">
-					<p className="text-[13px] text-status-red text-center">{error}</p>
+					<p className="text-ui text-status-red text-center">{error}</p>
 				</div>
 			) : entries.length === 0 ? (
 				<div className="flex items-center justify-center py-12 px-4">
-					<p className="text-[13px] text-text-tertiary text-center">This directory is empty.</p>
+					<p className="text-ui text-text-tertiary text-center">This directory is empty.</p>
 				</div>
 			) : (
 				<div className="flex flex-col">
@@ -279,7 +279,7 @@ function DirectoryEntryList({
 							className={cn(
 								"flex items-center gap-2 px-4 py-2 text-left cursor-pointer bg-transparent border-none",
 								"hover:bg-surface-2 active:bg-surface-3",
-								"text-[13px] text-text-primary",
+								"text-ui text-text-primary",
 							)}
 							onClick={() => onNavigate(entry.path)}
 							data-testid={`dir-entry-${entry.name}`}

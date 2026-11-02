@@ -86,9 +86,9 @@ export function InlineCompletionPicker({
 					onCloseAutoFocus={(event) => event.preventDefault()}
 				>
 					{isLoading ? (
-						<div className="px-2.5 py-1.5 text-[13px] text-text-tertiary">{loadingMessage}</div>
+						<div className="px-2.5 py-1.5 text-ui text-text-tertiary">{loadingMessage}</div>
 					) : items.length === 0 && emptyMessage ? (
-						<div className="px-2.5 py-1.5 text-[13px] text-text-tertiary">{emptyMessage}</div>
+						<div className="px-2.5 py-1.5 text-ui text-text-tertiary">{emptyMessage}</div>
 					) : (
 						<div ref={menuRef} className="max-h-56 overflow-x-hidden overflow-y-auto p-1">
 							{items.map((item, index) => (

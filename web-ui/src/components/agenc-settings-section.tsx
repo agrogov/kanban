@@ -39,7 +39,7 @@ export function hasAgencSettingsChanges(
 }
 
 const INPUT_CLASS_NAME =
-	"h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none disabled:opacity-40";
+	"h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-ui text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none disabled:opacity-40";
 
 export function AgencSettingsSection({
 	draft,
@@ -55,14 +55,14 @@ export function AgencSettingsSection({
 	const hasStoredKey = apiKeyConfigured && !draft.clearApiKey;
 	return (
 		<div className="rounded-lg border border-border bg-surface-0 px-4 py-3 mb-4">
-			<h6 className="text-[12px] font-semibold uppercase tracking-wider text-text-secondary m-0 mb-1">AgenC</h6>
-			<p className="text-text-secondary text-[12px] mt-0 mb-3">
+			<h6 className="text-label font-medium text-text-secondary m-0 mb-1">AgenC</h6>
+			<p className="text-text-secondary text-label mt-0 mb-3">
 				Connects AgenC to any OpenAI-compatible endpoint. Leave everything empty to use the provider configured by{" "}
 				<code>agenc onboard</code>.
 			</p>
 			<div className="grid gap-2">
 				<div className="min-w-0">
-					<p className="text-text-secondary text-[12px] mt-0 mb-1">API base URL</p>
+					<p className="text-text-secondary text-label mt-0 mb-1">API base URL</p>
 					<input
 						value={draft.baseUrl}
 						onChange={(event) => onChange({ ...draft, baseUrl: event.target.value })}
@@ -72,7 +72,7 @@ export function AgencSettingsSection({
 					/>
 				</div>
 				<div className="min-w-0">
-					<p className="text-text-secondary text-[12px] mt-0 mb-1">Model</p>
+					<p className="text-text-secondary text-label mt-0 mb-1">Model</p>
 					<input
 						value={draft.model}
 						onChange={(event) => onChange({ ...draft, model: event.target.value })}
@@ -82,7 +82,7 @@ export function AgencSettingsSection({
 					/>
 				</div>
 				<div className="min-w-0">
-					<p className="text-text-secondary text-[12px] mt-0 mb-1">API key</p>
+					<p className="text-text-secondary text-label mt-0 mb-1">API key</p>
 					<div className="flex items-center gap-2">
 						<input
 							type="password"
@@ -104,7 +104,7 @@ export function AgencSettingsSection({
 							</Button>
 						) : null}
 					</div>
-					<p className="text-text-tertiary text-[11px] mt-1 mb-0">
+					<p className="text-text-tertiary text-micro mt-1 mb-0">
 						Stored unencrypted in Kanban's global config file and passed to AgenC as OPENAI_COMPATIBLE_API_KEY.
 					</p>
 				</div>

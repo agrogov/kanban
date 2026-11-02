@@ -890,10 +890,8 @@ export default function App(): ReactElement {
 								<div className="flex flex-1 min-h-0 items-center justify-center bg-surface-0 p-6">
 									<div className="flex flex-col items-center justify-center gap-3 text-text-tertiary">
 										<FolderOpen size={48} strokeWidth={1} />
-										<h3 className="text-sm font-semibold text-text-primary">No projects yet</h3>
-										<p className="text-[13px] text-text-secondary">
-											Add a git repository to start using Kanban.
-										</p>
+										<h3 className="text-sm font-medium text-text-primary">No projects yet</h3>
+										<p className="text-ui text-text-secondary">Add a git repository to start using Kanban.</p>
 										<Button
 											variant="primary"
 											onClick={() => {

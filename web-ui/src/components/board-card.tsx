@@ -614,7 +614,7 @@ export function BoardCard({
 									)}
 								</div>
 								<div className="flex items-center">
-									<Tooltip content={isCopied ? "Copied!" : "Copy prompt"}>
+									<Tooltip content={isCopied ? "Copied" : "Copy prompt"}>
 										<Button
 											icon={<Copy size={14} />}
 											variant="ghost"

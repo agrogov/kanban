@@ -453,8 +453,8 @@ export function TaskStartAgentOnboardingCarousel({
 			) : null}
 
 			<div>
-				<h4 className="m-0 text-[15px] font-semibold text-text-primary">{currentSlide?.title}</h4>
-				<p className="mt-1 mb-0 text-[13px] text-text-secondary">{currentSlide?.description}</p>
+				<h4 className="m-0 text-[15px] font-medium text-text-primary">{currentSlide?.title}</h4>
+				<p className="mt-1 mb-0 text-ui text-text-secondary">{currentSlide?.description}</p>
 			</div>
 
 			{isMediaOnboardingSlide(currentSlide) ? (
@@ -507,7 +507,7 @@ export function TaskStartAgentOnboardingCarousel({
 											<Check size={12} className="text-white" />
 										</RadixCheckbox.Indicator>
 									</RadixCheckbox.Root>
-									<span className="text-[13px] text-text-primary">{agent.label}</span>
+									<span className="text-ui text-text-primary">{agent.label}</span>
 								</span>
 								{agent.id === "cline" ? (
 									clineAuthenticated ? (
@@ -522,7 +522,7 @@ export function TaskStartAgentOnboardingCarousel({
 									<AgentStatusBadge label="Not installed" statusClassName="bg-surface-3 text-text-secondary" />
 								)}
 							</div>
-							<p className="mt-2 mb-0 text-[12px] text-text-secondary">
+							<p className="mt-2 mb-0 text-label text-text-secondary">
 								{resolveInstallInstructions(agent.id)}
 								{agent.id !== "cline" && agent.installUrl ? (
 									<>
@@ -548,7 +548,7 @@ export function TaskStartAgentOnboardingCarousel({
 										onSaved={onClineSetupSaved}
 									/>
 									{clineSetupError ? (
-										<div className="mt-2 rounded-md border border-status-red/30 bg-status-red/5 p-2 text-[12px] text-text-primary">
+										<div className="mt-2 rounded-md border border-status-red/30 bg-status-red/5 p-2 text-label text-text-primary">
 											{clineSetupError}
 										</div>
 									) : null}
@@ -557,7 +557,7 @@ export function TaskStartAgentOnboardingCarousel({
 						</div>
 					))}
 					{selectionError ? (
-						<div className="rounded-md border border-status-red/30 bg-status-red/5 p-2 text-[12px] text-text-primary">
+						<div className="rounded-md border border-status-red/30 bg-status-red/5 p-2 text-label text-text-primary">
 							{selectionError}
 						</div>
 					) : null}
