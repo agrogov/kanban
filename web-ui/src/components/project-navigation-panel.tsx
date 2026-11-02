@@ -102,6 +102,7 @@ export function ProjectNavigationPanel({
 
 	const isMobile = useIsMobile();
 	const [isMobileClosing, setIsMobileClosing] = useState(false);
+	const [isAgentSectionHidden, setIsAgentSectionHidden] = useState(false);
 
 	useEffect(() => {
 		if (isMobile) {
@@ -301,6 +302,16 @@ export function ProjectNavigationPanel({
 					<div className="font-medium text-base flex items-baseline gap-1.5">
 						<ClineIcon size={18} className="text-text-primary shrink-0 self-center" />
 						Cline <span className="text-text-secondary font-normal text-xs">v{__APP_VERSION__}</span>
+						<Button
+							variant="ghost"
+							size="sm"
+							icon={isAgentSectionHidden ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+							onClick={() => setIsAgentSectionHidden((hidden) => !hidden)}
+							disabled={activeSection !== "agent"}
+							aria-label={isAgentSectionHidden ? "Show Kanban Agent" : "Hide Kanban Agent"}
+							aria-pressed={isAgentSectionHidden}
+							className="self-center"
+						/>
 					</div>
 					{isMobile ? (
 						<Button
