@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeConfigState } from "../../../src/config/runtime-config";
 import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
+import { createHomeAgentSessionId } from "../../../src/core/home-agent-session";
 
 const agentRegistryMocks = vi.hoisted(() => ({
 	resolveAgentCommand: vi.fn(),
@@ -508,6 +509,47 @@ describe("createRuntimeApi startTaskSession", () => {
 			baseRef: "main",
 			ensure: true,
 		});
+	});
+
+	it("gives native chat home sessions the Kanban sidebar briefing but not task sessions", async () => {
+		taskWorktreeMocks.resolveTaskCwd.mockResolvedValue("/tmp/existing-worktree");
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue(null);
+
+		const chatService = createClineTaskSessionServiceMock();
+		chatService.startTaskSession.mockResolvedValue(createSummary({ agentId: "claude-chat", pid: null }));
+
+		const api = createTestRuntimeApi({
+			getActiveWorkspaceId: vi.fn(() => "workspace-1"),
+			loadScopedRuntimeConfig: vi.fn(async () => createRuntimeConfigState()),
+			setActiveRuntimeConfig: vi.fn(),
+			getScopedTerminalManager: vi.fn(
+				async () => ({ getSummary: vi.fn(() => null), applyTurnCheckpoint: vi.fn() }) as never,
+			),
+			getScopedClineTaskSessionService: vi.fn(async () => chatService as never),
+			resolveInteractiveShellCommand: vi.fn(),
+			runCommand: vi.fn(),
+		});
+		const scope = { workspaceId: "workspace-1", workspacePath: "/tmp/repo" };
+		const homeTaskId = createHomeAgentSessionId("workspace-1", "claude-chat");
+
+		await api.startTaskSession(scope, {
+			taskId: homeTaskId,
+			baseRef: "main",
+			prompt: "run the tasks",
+			agentId: "claude-chat",
+		});
+		await api.startTaskSession(scope, {
+			taskId: "task-1",
+			baseRef: "main",
+			prompt: "do work",
+			agentId: "claude-chat",
+		});
+
+		expect(chatService.startTaskSession).toHaveBeenNthCalledWith(
+			1,
+			expect.objectContaining({ systemPrompt: expect.stringContaining("# Kanban Sidebar") }),
+		);
+		expect(chatService.startTaskSession).toHaveBeenNthCalledWith(2, expect.objectContaining({ systemPrompt: null }));
 	});
 
 	it("routes cline start sessions to cline task session service", async () => {

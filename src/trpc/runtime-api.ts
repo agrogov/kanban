@@ -48,6 +48,7 @@ import { listChatAgentModels } from "../core/chat-agent-models";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { parseRuntimeClineReasoningEffort } from "../core/task-agent-settings";
 import { resolveTaskTitle } from "../core/task-title.js";
+import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import { openInBrowser } from "../server/browser";
 import { buildRuntimeConfigResponse, resolveAgentCommand } from "../terminal/agent-registry";
 import type { TerminalSessionManager } from "../terminal/session-manager";
@@ -249,6 +250,7 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 						mode: requestedClineTaskMode,
 						modelId: body.agentSettings?.modelId ?? null,
 						agentReasoningEffort: body.agentSettings?.reasoningEffort ?? null,
+						systemPrompt: resolveHomeAgentAppendSystemPrompt(body.taskId),
 					});
 					return { ok: true, summary };
 				}
