@@ -1,6 +1,6 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, Info, Lightbulb, PanelLeft, Plus, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, Info, Lightbulb, Plus, X } from "lucide-react";
 import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { canShowFeaturebaseFeedbackButton } from "@/components/featurebase-feedback-button";
 import { Button } from "@/components/ui/button";
@@ -301,14 +301,6 @@ export function ProjectNavigationPanel({
 					<div className="font-medium text-base flex items-baseline gap-1.5">
 						<ClineIcon size={18} className="text-text-primary shrink-0 self-center" />
 						Cline <span className="text-text-secondary font-normal text-xs">v{__APP_VERSION__}</span>
-						<Button
-							variant="ghost"
-							size="sm"
-							icon={<PanelLeft size={16} />}
-							onClick={() => setCollapsed(true)}
-							aria-label="Collapse sidebar"
-							className="self-center"
-						/>
 					</div>
 					{isMobile ? (
 						<Button
