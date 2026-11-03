@@ -1220,7 +1220,7 @@ export function RuntimeSettingsDialog({
 				<Button
 					size="sm"
 					variant="ghost"
-					className="mr-auto mt-[3px]"
+					className="mr-auto mt-1"
 					icon={<ExternalLink size={14} />}
 					onClick={() => window.open("https://docs.cline.bot/kanban/overview", "_blank")}
 				>

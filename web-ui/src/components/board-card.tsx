@@ -751,7 +751,7 @@ export function BoardCard({
 							) : null}
 							{sessionActivity ? (
 								<div
-									className="flex gap-1.5 items-start mt-[6px]"
+									className="flex gap-1.5 items-start mt-1.5"
 									style={{
 										color: isTrashCard ? SESSION_ACTIVITY_COLOR.muted : undefined,
 									}}

@@ -518,7 +518,7 @@ export function ClineSetupSection({
 									<li className="mt-2">
 										Enter this code:
 										<div className="mt-1 flex items-center gap-2">
-											<p className="text-text-primary text-[18px] font-mono font-bold m-0">
+											<p className="text-text-primary text-[18px] font-mono font-medium m-0">
 												{controller.deviceAuthInfo.userCode}
 											</p>
 											<Button

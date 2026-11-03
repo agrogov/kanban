@@ -74,7 +74,7 @@ function useResizeHandler(
 }
 
 function SkeletonLine({ width, mb }: { width: string; mb?: boolean }): React.ReactElement {
-	return <div className={cn("kb-skeleton h-[13px] rounded-sm", mb && "mb-[7px]")} style={{ width }} />;
+	return <div className={cn("kb-skeleton h-3 rounded-sm", mb && "mb-2")} style={{ width }} />;
 }
 
 function SkeletonFileRow({ width }: { width: string }): React.ReactElement {
