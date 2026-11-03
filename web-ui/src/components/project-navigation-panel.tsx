@@ -419,7 +419,7 @@ export function ProjectNavigationPanel({
 						featurebaseFeedbackState={featurebaseFeedbackState}
 					/>
 				</>
-			) : (
+			) : isAgentSectionHidden ? null : (
 				<div className="flex flex-1 min-h-0 flex-col">
 					{selectedAgentId && selectedAgentId !== "cline" ? <TerminalAgentHints /> : null}
 					<div className="flex flex-1 min-h-0 overflow-hidden bg-surface-1 px-2 pb-2 pt-1">
