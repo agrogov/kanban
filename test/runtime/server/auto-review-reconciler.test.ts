@@ -281,6 +281,46 @@ describe("auto-review reconciler", () => {
 		expect(harness.deleteTaskWorktree).toHaveBeenCalledWith({ repoPath: "/repo", taskId: "task-1" });
 	});
 
+	it("drops the worktree of a Done card only once its work has landed on the base ref", async () => {
+		let currentTime = 1_000_000;
+		const card = createCard({ id: "task-1" });
+		const harness = createHarness({ board: createBoard({ trash: [card] }), now: () => currentTime });
+
+		// Unlanded commits: the worktree is the only checkout of that work.
+		harness.setProbe("task-1", { exists: true, headCommit: "commit-1", changedFiles: 0, unlandedCommits: 2 });
+		await harness.evaluate();
+		expect(harness.deleteTaskWorktree).not.toHaveBeenCalled();
+
+		// Uncommitted changes, and an unknown landing state, also keep it.
+		currentTime += 61_000;
+		harness.setProbe("task-1", { exists: true, headCommit: "commit-1", changedFiles: 3, unlandedCommits: 0 });
+		await harness.evaluate();
+		currentTime += 61_000;
+		harness.setProbe("task-1", { exists: true, headCommit: "commit-1", changedFiles: 0 });
+		await harness.evaluate();
+		expect(harness.deleteTaskWorktree).not.toHaveBeenCalled();
+
+		// Landed and clean: removed. The card stays in Done.
+		currentTime += 61_000;
+		harness.setProbe("task-1", { exists: true, headCommit: "commit-1", changedFiles: 0, unlandedCommits: 0 });
+		await harness.evaluate();
+		expect(harness.deleteTaskWorktree).toHaveBeenCalledWith({ repoPath: "/repo", taskId: "task-1" });
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("trash");
+	});
+
+	it("probes Done worktrees at most once per sweep interval", async () => {
+		let currentTime = 1_000_000;
+		const card = createCard({ id: "task-1" });
+		const harness = createHarness({ board: createBoard({ trash: [card] }), now: () => currentTime });
+		harness.setProbe("task-1", { exists: true, headCommit: "commit-1", changedFiles: 0, unlandedCommits: 1 });
+		await harness.evaluate();
+		await harness.evaluate();
+		expect(harness.probeTaskWorkspace).toHaveBeenCalledTimes(1);
+		currentTime += 61_000;
+		await harness.evaluate();
+		expect(harness.probeTaskWorkspace).toHaveBeenCalledTimes(2);
+	});
+
 	it("keeps the card in review until its commits have landed on the base ref", async () => {
 		const card = createCard({ id: "task-1", autoReviewEnabled: true });
 		const harness = createHarness({ board: createBoard({ review: [card] }) });

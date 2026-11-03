@@ -39,6 +39,12 @@ import { deleteTaskWorktree as deleteTaskWorktreeFromDisk, getTaskWorkspacePathI
 const AUTO_REVIEW_EVALUATION_INTERVAL_MS = 5_000;
 
 /**
+ * How often Done cards are checked for a worktree whose work has landed. Each check is a git
+ * probe per leftover worktree, so it runs far less often than the evaluation cycle.
+ */
+const DONE_WORKTREE_SWEEP_INTERVAL_MS = 60_000;
+
+/**
  * Delay between pasting the git action prompt into the task terminal and
  * submitting it, matching the choreography the browser used.
  */
@@ -127,6 +133,7 @@ interface ReconcilerWorkspaceRuntime {
 	clineUnavailableLoggedTaskIds: Set<string>;
 	/** Git-action prompts sent per task for the current worktree HEAD, so a card that never lands is not re-prompted forever. */
 	gitActionAttemptsByTaskId: Map<string, { headCommit: string | null; count: number }>;
+	lastDoneWorktreeSweepAt: number;
 }
 
 /** Each attempt bounces the card review -> in_progress -> review, so stop after a few. */
@@ -140,6 +147,7 @@ function createWorkspaceRuntime(): ReconcilerWorkspaceRuntime {
 		submitTimers: new Set<NodeJS.Timeout>(),
 		clineUnavailableLoggedTaskIds: new Set<string>(),
 		gitActionAttemptsByTaskId: new Map(),
+		lastDoneWorktreeSweepAt: 0,
 	};
 }
 
@@ -414,6 +422,36 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 		}
 	};
 
+	// Cards reach Done without the trash workflow when their session is interrupted, which leaves
+	// the worktree behind. Drop it once everything it holds has landed on the base ref; a worktree
+	// with unlanded commits or uncommitted changes (or an unknown landing state) is kept.
+	const sweepDoneWorktrees = async (
+		workspace: AutoReviewWorkspace,
+		workspacePath: string,
+		state: RuntimeWorkspaceStateResponse,
+		runtime: ReconcilerWorkspaceRuntime,
+		timestamp: number,
+	): Promise<void> => {
+		if (timestamp - runtime.lastDoneWorktreeSweepAt < DONE_WORKTREE_SWEEP_INTERVAL_MS) {
+			return;
+		}
+		runtime.lastDoneWorktreeSweepAt = timestamp;
+		const doneColumn = state.board.columns.find((column) => column.id === "trash");
+		for (const card of doneColumn?.cards ?? []) {
+			if (!workspaceRuntimes.has(workspace.workspaceId)) {
+				return;
+			}
+			const probe = await probeTaskWorkspace({
+				workspacePath,
+				taskId: card.id,
+				baseRef: card.baseRef,
+			}).catch(() => null);
+			if (probe?.exists && probe.unlandedCommits === 0 && probe.changedFiles === 0) {
+				await cleanupLandedTask(workspace, workspacePath, card.id);
+			}
+		}
+	};
+
 	const triggerTerminalGitAction = (
 		terminalManager: TerminalSessionManager,
 		card: RuntimeBoardCard,
@@ -656,6 +694,10 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 					runtime.gitActionInFlightTaskIds.delete(card.id);
 				}
 			}
+		}
+
+		if (stillTracked()) {
+			await sweepDoneWorktrees(workspace, workspacePath, state, runtime, timestamp);
 		}
 
 		if (boardMutated && stillTracked()) {
