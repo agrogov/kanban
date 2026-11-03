@@ -1,6 +1,6 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, Info, Lightbulb, Plus, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Ellipsis, ExternalLink, Info, Lightbulb, PanelLeft, Plus, X } from "lucide-react";
 import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { canShowFeaturebaseFeedbackButton } from "@/components/featurebase-feedback-button";
 import { Button } from "@/components/ui/button";
@@ -102,15 +102,6 @@ export function ProjectNavigationPanel({
 
 	const isMobile = useIsMobile();
 	const [isMobileClosing, setIsMobileClosing] = useState(false);
-	const [isAgentSectionHidden, setIsAgentSectionHidden] = useState(
-		() => readLocalStorageItem(LocalStorageKey.ProjectNavigationAgentSectionHidden) === "true",
-	);
-	const toggleAgentSectionHidden = useCallback(() => {
-		setIsAgentSectionHidden((hidden) => {
-			writeLocalStorageItem(LocalStorageKey.ProjectNavigationAgentSectionHidden, String(!hidden));
-			return !hidden;
-		});
-	}, []);
 
 	useEffect(() => {
 		if (isMobile) {
@@ -313,11 +304,9 @@ export function ProjectNavigationPanel({
 						<Button
 							variant="ghost"
 							size="sm"
-							icon={isAgentSectionHidden ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-							onClick={toggleAgentSectionHidden}
-							disabled={activeSection !== "agent"}
-							aria-label={isAgentSectionHidden ? "Show Kanban Agent" : "Hide Kanban Agent"}
-							aria-pressed={isAgentSectionHidden}
+							icon={<PanelLeft size={16} />}
+							onClick={() => setCollapsed(true)}
+							aria-label="Collapse sidebar"
 							className="self-center"
 						/>
 					</div>
@@ -419,7 +408,7 @@ export function ProjectNavigationPanel({
 						featurebaseFeedbackState={featurebaseFeedbackState}
 					/>
 				</>
-			) : isAgentSectionHidden ? null : (
+			) : (
 				<div className="flex flex-1 min-h-0 flex-col">
 					{selectedAgentId && selectedAgentId !== "cline" ? <TerminalAgentHints /> : null}
 					<div className="flex flex-1 min-h-0 overflow-hidden bg-surface-1 px-2 pb-2 pt-1">

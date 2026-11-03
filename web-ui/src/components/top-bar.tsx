@@ -12,6 +12,7 @@ import {
 	Ellipsis,
 	GitBranch,
 	Menu,
+	PanelLeft,
 	Play,
 	Plus,
 	Settings,
@@ -495,11 +496,11 @@ export function TopBar({
 			>
 				{/* ---- Left side: hamburger/back, path, hints, git ---- */}
 				<div className="flex flex-nowrap items-center h-10 flex-1 min-w-0 overflow-hidden gap-1.5">
-					{isMobile && onToggleSidebar ? (
+					{onToggleSidebar ? (
 						<Button
 							variant="ghost"
 							size="sm"
-							icon={<Menu size={16} />}
+							icon={isMobile ? <Menu size={16} /> : <PanelLeft size={16} />}
 							onClick={onToggleSidebar}
 							aria-label="Toggle sidebar"
 							className={cn("shrink-0", MOBILE_TOUCH_TARGET)}
