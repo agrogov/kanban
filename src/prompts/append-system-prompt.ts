@@ -322,6 +322,23 @@ Parameters:
 - \`--task-id <task_id>\` required task ID.
 - \`--project-path <path>\` optional workspace path. If not already registered in Kanban, it is auto-added for git repos.
 
+## task move
+
+Purpose: move a task to another board column without dragging the card in the app. Use \`--column backlog\` to requeue a card whose session died or went missing.
+
+Command:
+\`${kanbanCommand} task move --task-id <task_id> --column backlog|in_progress|review|done [--project-path <path>]\`
+
+Parameters:
+- \`--task-id <task_id>\` required task ID.
+- \`--column <value>\` required target column. Allowed values: \`backlog\`, \`in_progress\`, \`review\`, \`done\` (\`trash\` is also accepted for \`done\`).
+- \`--project-path <path>\` optional workspace path. If not already registered in Kanban, it is auto-added for git repos.
+
+Notes:
+- Allowed moves: \`backlog\` -> \`in_progress\` | \`done\`; \`in_progress\` -> \`backlog\` | \`review\` | \`done\`; \`review\` -> \`in_progress\` | \`done\`; \`done\` -> \`review\`.
+- Moving to \`done\` reuses the \`task done\` workflow: it stops the session, cleans up the task worktree, and starts linked tasks that become ready.
+- Requeueing out of \`in_progress\` or \`review\` to \`backlog\` stops any live session first.
+
 # Per-Task Agent, Provider, Model, and Effort Overrides
 
 Tasks can override the workspace default agent, and additionally carry per-task provider, model, and reasoning-effort settings. Kanban stores these values on the card and passes them verbatim to whichever agent launches the task. Kanban never validates model IDs or effort vocabularies — that is each agent's job at launch.
@@ -342,6 +359,13 @@ To rerun a task with a different model or effort, update the card and start it a
 
 \`\`\`
 ${kanbanCommand} task update --task-id <task_id> --model <model_id> --effort <level>
+${kanbanCommand} task start --task-id <task_id>
+\`\`\`
+
+If the card is stuck in \`in_progress\` and cannot be started again (for example its session died while still marked live), requeue it first:
+
+\`\`\`
+${kanbanCommand} task move --task-id <task_id> --column backlog
 ${kanbanCommand} task start --task-id <task_id>
 \`\`\`
 

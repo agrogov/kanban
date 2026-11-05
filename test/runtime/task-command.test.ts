@@ -4,6 +4,8 @@ import {
 	buildTaskAgentSettingsForCreate,
 	buildTaskAgentSettingsForUpdate,
 	formatTaskAgentSettings,
+	type MoveTaskDependencies,
+	moveTask,
 	resolveSettingsFlag,
 	type StartTaskDependencies,
 	shouldWarnOnExplicitAgentId,
@@ -12,6 +14,7 @@ import {
 } from "../../src/commands/task";
 import type {
 	RuntimeBoardCard,
+	RuntimeBoardColumnId,
 	RuntimeTaskAgentSettings,
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
@@ -342,5 +345,100 @@ describe("startTask", () => {
 		await startTask({ cwd: "/tmp/repo", taskId: "task-1" }, harness.dependencies);
 
 		expect(harness.startTaskSession).toHaveBeenCalledTimes(1);
+	});
+});
+
+interface MoveTaskHarness {
+	dependencies: MoveTaskDependencies;
+	getMutationCount: () => number;
+	stopTaskSession: ReturnType<typeof vi.fn>;
+	trashTask: ReturnType<typeof vi.fn>;
+}
+
+function createBoardStateWithTaskInColumn(columnId: RuntimeBoardColumnId): RuntimeWorkspaceStateResponse {
+	const base = createStartTaskState(null);
+	const card = base.board.columns.find((column) => column.id === "in_progress")?.cards[0];
+	if (!card) {
+		throw new Error("Expected a fixture card in in_progress.");
+	}
+	return {
+		...base,
+		board: {
+			...base.board,
+			columns: base.board.columns.map((column) => ({
+				...column,
+				cards: column.id === columnId ? [card] : [],
+			})),
+		},
+	};
+}
+
+function createMoveTaskHarness(state: RuntimeWorkspaceStateResponse): MoveTaskHarness {
+	let mutationCount = 0;
+	const stopTaskSession = vi.fn(async () => ({ ok: true }));
+	const runtimeClient = {
+		workspace: { getState: { query: vi.fn(async () => state) } },
+		runtime: { stopTaskSession: { mutate: stopTaskSession } },
+	};
+	const trashTask = vi.fn(async () => ({
+		ok: true,
+		task: { id: "task-1", column: "trash" },
+		workspacePath: "/tmp/repo",
+	}));
+	const dependencies = {
+		resolveWorkspaceRepoPath: async () => "/tmp/repo",
+		ensureRuntimeWorkspace: async () => "workspace-1",
+		createRuntimeClient: () => runtimeClient as never,
+		updateRuntimeWorkspaceState: async (_client, _repoPath, mutate) => {
+			mutationCount += 1;
+			return mutate(state).value;
+		},
+		trashTask,
+	} satisfies MoveTaskDependencies;
+	return { dependencies, getMutationCount: () => mutationCount, stopTaskSession, trashTask };
+}
+
+describe("moveTask", () => {
+	it("requeues a task from in_progress to backlog and reports the new column", async () => {
+		const harness = createMoveTaskHarness(createBoardStateWithTaskInColumn("in_progress"));
+
+		const result = await moveTask({ cwd: "/tmp/repo", taskId: "task-1", column: "backlog" }, harness.dependencies);
+
+		expect(result).toMatchObject({ ok: true, workspacePath: "/tmp/repo" });
+		expect(result.task).toMatchObject({ id: "task-1", column: "backlog" });
+		expect(harness.getMutationCount()).toBe(1);
+		expect(harness.stopTaskSession).not.toHaveBeenCalled();
+	});
+
+	it("stops a live session when requeueing to backlog", async () => {
+		const state = createBoardStateWithTaskInColumn("in_progress");
+		state.sessions["task-1"] = createTaskSummary({ state: "running", agentId: "pi-chat" });
+		const harness = createMoveTaskHarness(state);
+
+		await moveTask({ cwd: "/tmp/repo", taskId: "task-1", column: "backlog" }, harness.dependencies);
+
+		expect(harness.stopTaskSession).toHaveBeenCalledWith({ taskId: "task-1" });
+	});
+
+	it("rejects a transition the UI does not allow without touching the board", async () => {
+		const harness = createMoveTaskHarness(createBoardStateWithTaskInColumn("backlog"));
+
+		await expect(
+			moveTask({ cwd: "/tmp/repo", taskId: "task-1", column: "review" }, harness.dependencies),
+		).rejects.toThrow('cannot move from "backlog" to "review"');
+		expect(harness.getMutationCount()).toBe(0);
+	});
+
+	it("routes done moves through the trash workflow", async () => {
+		const harness = createMoveTaskHarness(createBoardStateWithTaskInColumn("in_progress"));
+
+		const result = await moveTask({ cwd: "/tmp/repo", taskId: "task-1", column: "trash" }, harness.dependencies);
+
+		expect(harness.trashTask).toHaveBeenCalledWith({
+			cwd: "/tmp/repo",
+			taskId: "task-1",
+			projectPath: undefined,
+		});
+		expect(result).toMatchObject({ ok: true, workspacePath: "/tmp/repo" });
 	});
 });

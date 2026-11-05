@@ -17,7 +17,9 @@ import {
 	addTaskDependency,
 	addTaskToColumn,
 	deleteTasksFromBoard,
+	getAllowedTaskColumnMoves,
 	getTaskColumnId,
+	isAllowedTaskColumnMove,
 	moveTaskToColumn,
 	type RuntimeAddTaskDependencyResult,
 	removeTaskDependency,
@@ -877,6 +879,109 @@ function columnCanHaveLiveTaskSession(columnId: ListTaskColumn): boolean {
 	return columnId === "in_progress" || columnId === "review";
 }
 
+function formatTaskColumnForHumans(columnId: RuntimeBoardColumnId): string {
+	return columnId === "trash" ? "done" : columnId;
+}
+
+function formatAllowedTaskColumns(fromColumnId: RuntimeBoardColumnId): string {
+	const allowed = getAllowedTaskColumnMoves(fromColumnId);
+	return allowed.length > 0 ? allowed.map(formatTaskColumnForHumans).join(", ") : "none";
+}
+
+export interface MoveTaskDependencies {
+	resolveWorkspaceRepoPath: (projectPath: string | undefined, cwd: string) => Promise<string>;
+	ensureRuntimeWorkspace: (workspaceRepoPath: string) => Promise<string>;
+	createRuntimeClient: (workspaceId: string) => ReturnType<typeof createRuntimeTrpcClient>;
+	updateRuntimeWorkspaceState: typeof updateRuntimeWorkspaceState;
+	trashTask: (input: { cwd: string; taskId: string; projectPath?: string }) => Promise<JsonRecord>;
+}
+
+const defaultMoveTaskDependencies: MoveTaskDependencies = {
+	resolveWorkspaceRepoPath,
+	ensureRuntimeWorkspace,
+	createRuntimeClient: createRuntimeTrpcClient,
+	updateRuntimeWorkspaceState,
+	trashTask,
+};
+
+/**
+ * Moves a task between board columns without hand-rolling board edits. Moving to
+ * `done` reuses the full trash workflow (stop session, clean up worktree, start
+ * linked tasks), and requeueing a task out of `in_progress`/`review` stops the
+ * live session so no agent keeps writing to a card another agent can now pick up.
+ */
+export async function moveTask(
+	input: { cwd: string; taskId: string; column: ListTaskColumn; projectPath?: string },
+	dependencies: MoveTaskDependencies = defaultMoveTaskDependencies,
+): Promise<JsonRecord> {
+	if (input.column === "trash") {
+		return await dependencies.trashTask({
+			cwd: input.cwd,
+			taskId: input.taskId,
+			projectPath: input.projectPath,
+		});
+	}
+
+	const targetColumnId = input.column;
+	const workspaceRepoPath = await dependencies.resolveWorkspaceRepoPath(input.projectPath, input.cwd);
+	const workspaceId = await dependencies.ensureRuntimeWorkspace(workspaceRepoPath);
+	const runtimeClient = dependencies.createRuntimeClient(workspaceId);
+	const initialState = await runtimeClient.workspace.getState.query();
+	const initialRecord = findTaskRecord(initialState, input.taskId);
+	if (!initialRecord) {
+		throw new Error(`Task "${input.taskId}" was not found in workspace ${workspaceRepoPath}.`);
+	}
+	if (initialRecord.columnId === targetColumnId) {
+		return {
+			ok: true,
+			message: `Task "${input.taskId}" is already in "${formatTaskColumnForHumans(targetColumnId)}".`,
+			task: formatTaskRecord(initialState, initialRecord.task, initialRecord.columnId),
+			workspacePath: workspaceRepoPath,
+		};
+	}
+	if (!isAllowedTaskColumnMove(initialRecord.columnId, targetColumnId)) {
+		throw new Error(
+			`Task "${input.taskId}" cannot move from "${formatTaskColumnForHumans(initialRecord.columnId)}" to "${formatTaskColumnForHumans(targetColumnId)}". ` +
+				`Allowed moves from "${formatTaskColumnForHumans(initialRecord.columnId)}": ${formatAllowedTaskColumns(initialRecord.columnId)}.`,
+		);
+	}
+
+	const moved = await dependencies.updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (latestState) => {
+		const movement = moveTaskToColumn(latestState.board, input.taskId, targetColumnId);
+		if (!movement.moved || !movement.task) {
+			throw new Error(
+				`Task "${input.taskId}" could not be moved to "${formatTaskColumnForHumans(targetColumnId)}".`,
+			);
+		}
+		const nextState: RuntimeWorkspaceStateResponse = {
+			...latestState,
+			board: movement.board,
+		};
+		return {
+			board: movement.board,
+			value: {
+				task: formatTaskRecord(nextState, movement.task, targetColumnId),
+			},
+		};
+	});
+
+	const session = initialState.sessions[input.taskId] ?? null;
+	const hasLiveSession = session !== null && !isTerminalTaskSessionState(session.state);
+	if (
+		hasLiveSession &&
+		columnCanHaveLiveTaskSession(initialRecord.columnId) &&
+		!columnCanHaveLiveTaskSession(targetColumnId)
+	) {
+		await stopTaskRuntimeSession(runtimeClient, input.taskId);
+	}
+
+	return {
+		ok: true,
+		task: moved.task,
+		workspacePath: workspaceRepoPath,
+	};
+}
+
 async function trashTaskById(input: {
 	cwd: string;
 	taskId: string;
@@ -1512,6 +1617,44 @@ export function registerTaskCommand(program: Command): void {
 					await startTask({
 						cwd: process.cwd(),
 						taskId: options.taskId,
+						projectPath: options.projectPath,
+					}),
+			);
+		});
+
+	task
+		.command("move")
+		.description("Move a task to another board column, including requeueing it to backlog.")
+		.requiredOption("--task-id <id>", "Task ID.")
+		.requiredOption(
+			"--column <column>",
+			"Target column: backlog | in_progress | review | done. trash is also accepted.",
+			parseListColumn,
+		)
+		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
+		.addHelpText(
+			"after",
+			[
+				"",
+				"Allowed moves:",
+				"  backlog     -> in_progress, done",
+				"  in_progress -> backlog, review, done",
+				"  review      -> in_progress, done",
+				"  done        -> review",
+				"",
+				"Use `move --column backlog` to requeue a card whose session died.",
+				"Moving to done reuses the `task done` workflow (stops the session,",
+				"cleans up the worktree, and starts linked tasks that become ready).",
+				"",
+			].join("\n"),
+		)
+		.action(async (options: { taskId: string; column: ListTaskColumn; projectPath?: string }) => {
+			await runTaskCommand(
+				async () =>
+					await moveTask({
+						cwd: process.cwd(),
+						taskId: options.taskId,
+						column: options.column,
 						projectPath: options.projectPath,
 					}),
 			);

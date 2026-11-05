@@ -5,6 +5,8 @@ import {
 	addTaskDependency,
 	addTaskToColumn,
 	deleteTasksFromBoard,
+	getAllowedTaskColumnMoves,
+	isAllowedTaskColumnMove,
 	moveTaskToColumn,
 	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
@@ -21,6 +23,26 @@ function createBoard(): RuntimeBoardData {
 		dependencies: [],
 	};
 }
+
+describe("task column transitions", () => {
+	it("allows the UI transitions plus requeueing a stranded in-progress task", () => {
+		expect(isAllowedTaskColumnMove("backlog", "in_progress")).toBe(true);
+		expect(isAllowedTaskColumnMove("in_progress", "backlog")).toBe(true);
+		expect(isAllowedTaskColumnMove("in_progress", "review")).toBe(true);
+		expect(isAllowedTaskColumnMove("review", "in_progress")).toBe(true);
+		expect(isAllowedTaskColumnMove("review", "trash")).toBe(true);
+		expect(isAllowedTaskColumnMove("trash", "review")).toBe(true);
+		expect(getAllowedTaskColumnMoves("in_progress")).toEqual(["backlog", "review", "trash"]);
+	});
+
+	it("rejects same-column, backwards, and direct backlog-to-review moves", () => {
+		expect(isAllowedTaskColumnMove("backlog", "backlog")).toBe(false);
+		expect(isAllowedTaskColumnMove("backlog", "review")).toBe(false);
+		expect(isAllowedTaskColumnMove("review", "backlog")).toBe(false);
+		expect(isAllowedTaskColumnMove("trash", "backlog")).toBe(false);
+		expect(isAllowedTaskColumnMove("trash", "in_progress")).toBe(false);
+	});
+});
 
 describe("deleteTasksFromBoard", () => {
 	it("removes a trashed task and any dependencies that reference it", () => {

@@ -479,6 +479,30 @@ export function deleteTasksFromBoard(board: RuntimeBoardData, taskIds: Iterable<
 	};
 }
 
+/**
+ * Column transitions `task move` accepts. These mirror the drag and programmatic
+ * transitions the board UI performs, plus the requeue edge
+ * (`in_progress` -> `backlog`) that lets a stranded card be picked up again.
+ * `trash` is the storage id behind the user-facing "done" column.
+ */
+const ALLOWED_TASK_COLUMN_MOVES: Readonly<Record<RuntimeBoardColumnId, readonly RuntimeBoardColumnId[]>> = {
+	backlog: ["in_progress", "trash"],
+	in_progress: ["backlog", "review", "trash"],
+	review: ["in_progress", "trash"],
+	trash: ["review"],
+};
+
+export function getAllowedTaskColumnMoves(fromColumnId: RuntimeBoardColumnId): readonly RuntimeBoardColumnId[] {
+	return ALLOWED_TASK_COLUMN_MOVES[fromColumnId];
+}
+
+export function isAllowedTaskColumnMove(fromColumnId: RuntimeBoardColumnId, toColumnId: RuntimeBoardColumnId): boolean {
+	if (fromColumnId === toColumnId) {
+		return false;
+	}
+	return ALLOWED_TASK_COLUMN_MOVES[fromColumnId].includes(toColumnId);
+}
+
 export function moveTaskToColumn(
 	board: RuntimeBoardData,
 	taskId: string,
