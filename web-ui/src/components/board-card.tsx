@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
-import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { RuntimeAgentId, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useTaskWorkspaceSnapshotValue } from "@/stores/workspace-metadata-store";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
 import { getTaskAutoReviewCancelButtonLabel } from "@/types";
@@ -234,6 +234,8 @@ export function BoardCard({
 	isDependencyLinking = false,
 	workspacePath,
 	defaultClineModelId = null,
+	defaultAgentId = null,
+	defaultClineReasoningEffort = null,
 }: {
 	card: BoardCardModel;
 	index: number;
@@ -258,6 +260,8 @@ export function BoardCard({
 	isDependencyLinking?: boolean;
 	workspacePath?: string | null;
 	defaultClineModelId?: string | null;
+	defaultAgentId?: RuntimeAgentId | null;
+	defaultClineReasoningEffort?: string | null;
 }): React.ReactElement {
 	const [isHovered, setIsHovered] = useState(false);
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -432,42 +436,30 @@ export function BoardCard({
 	const isAnyGitActionLoading = isCommitLoading || isOpenPrLoading;
 	const cancelAutomaticActionLabel =
 		!isTrashCard && card.autoReviewEnabled ? getTaskAutoReviewCancelButtonLabel(card.autoReviewMode) : null;
-	const agentOverrideLabel = useMemo(
-		() => (card.agentId ? (getRuntimeAgentCatalogEntry(card.agentId)?.label ?? card.agentId) : null),
-		[card.agentId],
-	);
-	const modelOverrideLabel = useMemo(() => {
-		if (card.agentSettings === undefined) {
+	const effectiveAgentId = card.agentId ?? defaultAgentId;
+	const isClineAgent = effectiveAgentId === "cline";
+	const taskAgentSettingsLabel = useMemo(() => {
+		if (!effectiveAgentId && card.agentSettings === undefined) {
 			return null;
 		}
-		const explicitReasoningLabel = card.agentSettings.reasoningEffort
-			? formatClineReasoningEffortLabel(card.agentSettings.reasoningEffort)
-			: !card.agentSettings.providerId && !card.agentSettings.modelId
-				? "Default"
-				: null;
-		if (card.agentSettings.providerId && !card.agentSettings.modelId) {
-			const providerLabel = `Provider: ${card.agentSettings.providerId}`;
-			return explicitReasoningLabel ? `${providerLabel} (${explicitReasoningLabel})` : providerLabel;
-		}
-		const effectiveModelId = card.agentSettings.modelId ?? defaultClineModelId;
-		if (!effectiveModelId) {
-			return explicitReasoningLabel ? `Default model (${explicitReasoningLabel})` : null;
-		}
-		const modelName = resolveClineModelDisplayName(effectiveModelId);
-		if (explicitReasoningLabel) {
-			return `${modelName} (${explicitReasoningLabel})`;
-		}
-		const inheritedReasoningEffort = "";
-		return formatClineSelectedModelButtonText({
-			modelName,
-			reasoningEffort: inheritedReasoningEffort,
-			showReasoningEffort: Boolean(inheritedReasoningEffort),
-		});
-	}, [card.agentSettings, defaultClineModelId]);
-	const taskAgentSettingsLabel = useMemo(() => {
-		const parts = [agentOverrideLabel, modelOverrideLabel].filter((value): value is string => Boolean(value));
-		return parts.length > 0 ? parts.join(" · ") : null;
-	}, [agentOverrideLabel, modelOverrideLabel]);
+		const agentLabel = effectiveAgentId
+			? (getRuntimeAgentCatalogEntry(effectiveAgentId)?.label ?? effectiveAgentId)
+			: null;
+		const settings = card.agentSettings;
+		// Provider/model/effort defaults are only known for Cline; other agents resolve them in their own CLI.
+		const modelId = settings?.modelId ?? (isClineAgent ? defaultClineModelId : null);
+		const reasoningEffort = settings?.reasoningEffort ?? (isClineAgent ? defaultClineReasoningEffort : null);
+		const modelLabel =
+			settings?.providerId && !settings.modelId
+				? `Provider: ${settings.providerId}`
+				: modelId
+					? resolveClineModelDisplayName(modelId)
+					: "Default model";
+		const effortLabel = reasoningEffort ? formatClineReasoningEffortLabel(reasoningEffort) : "Default";
+		const modelSummary = `${modelLabel} (${effortLabel})`;
+		return agentLabel ? `${agentLabel} · ${modelSummary}` : modelSummary;
+	}, [card.agentSettings, defaultClineModelId, defaultClineReasoningEffort, effectiveAgentId, isClineAgent]);
+	const hasAgentOverride = card.agentId !== undefined || card.agentSettings !== undefined;
 
 	const activeDescriptionDisplay = isDescriptionExpanded ? descriptionDisplay.expanded : descriptionDisplay.collapsed;
 
@@ -739,7 +731,7 @@ export function BoardCard({
 									<span
 										className={cn(
 											"inline-flex max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs",
-											isTrashCard
+											isTrashCard || !hasAgentOverride
 												? "border-border text-text-tertiary bg-surface-1"
 												: "border-status-blue/30 bg-status-blue/10 text-status-blue",
 										)}

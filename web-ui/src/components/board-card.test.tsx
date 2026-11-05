@@ -360,6 +360,7 @@ describe("BoardCard", () => {
 					})}
 					index={0}
 					columnId="backlog"
+					defaultAgentId="cline"
 					defaultClineModelId="openai/gpt-5.5"
 				/>,
 			);
