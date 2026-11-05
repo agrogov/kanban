@@ -5,11 +5,16 @@ import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ClineTaskAgentSettingsFields } from "@/components/cline-task-agent-settings-fields";
-import { OpaqueTaskAgentSettingsFields } from "@/components/opaque-task-agent-settings-fields";
+import { type OpaqueSelectOption, OpaqueTaskAgentSettingsFields } from "@/components/opaque-task-agent-settings-fields";
 import { patchAgentSettings, useResetInvalidSelectedModel } from "@/components/task-agent-settings-state";
 import { cn } from "@/components/ui/cn";
 import { NativeSelect } from "@/components/ui/native-select";
-import { fetchClineProviderCatalog, fetchClineProviderModels } from "@/runtime/runtime-config-query";
+import { isNativeChatAgentSelected } from "@/runtime/native-agent";
+import {
+	fetchChatAgentModels,
+	fetchClineProviderCatalog,
+	fetchClineProviderModels,
+} from "@/runtime/runtime-config-query";
 import type {
 	RuntimeAgentId,
 	RuntimeClineProviderCatalogItem,
@@ -203,6 +208,45 @@ export function useTaskAgentModelPicker({
 	};
 }
 
+// Effort vocabularies of the native chat agents (mirrors each chat service's accepted levels).
+const CHAT_AGENT_EFFORT_LEVELS: Partial<Record<RuntimeAgentId, string[]>> = {
+	"pi-chat": ["off", "minimal", "low", "medium", "high", "xhigh"],
+	"codex-chat": ["minimal", "low", "medium", "high", "xhigh"],
+	"claude-chat": ["low", "medium", "high", "xhigh", "max"],
+};
+
+function buildChatAgentEffortOptions(agentId: RuntimeAgentId | null): OpaqueSelectOption[] | undefined {
+	return CHAT_AGENT_EFFORT_LEVELS[agentId as RuntimeAgentId]?.map((level) => ({ value: level, label: level }));
+}
+
+/** Model catalog of a native chat agent (claude-chat / codex-chat / pi-chat), read from its own config. */
+function useChatAgentModelOptions(agentId: RuntimeAgentId | null, enabled: boolean): OpaqueSelectOption[] | undefined {
+	const [options, setOptions] = useState<OpaqueSelectOption[] | undefined>(undefined);
+	const chatAgentId = enabled && agentId !== "cline" && isNativeChatAgentSelected(agentId) ? agentId : null;
+	useEffect(() => {
+		if (!chatAgentId) {
+			setOptions(undefined);
+			return;
+		}
+		let cancelled = false;
+		void fetchChatAgentModels(null, chatAgentId)
+			.then((response) => {
+				if (!cancelled) {
+					setOptions(response.models.map((model) => ({ value: model.id, label: model.label })));
+				}
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setOptions(undefined);
+				}
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [chatAgentId]);
+	return options;
+}
+
 // ---------------------------------------------------------------------------
 // Component: agent override plus Cline or opaque per-task settings
 // ---------------------------------------------------------------------------
@@ -302,6 +346,7 @@ export function TaskAgentModelPicker({
 	});
 
 	const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
+	const chatModelOptions = useChatAgentModelOptions(effectiveAgentId, isSettingsExpanded);
 
 	return (
 		<div className="flex flex-col gap-2">
@@ -374,6 +419,8 @@ export function TaskAgentModelPicker({
 							docsUrl={effectiveCapabilities?.docsUrl}
 							showModelInput={showFreeTextModelInput}
 							showEffortInput={showFreeTextEffortInput}
+							modelOptions={chatModelOptions}
+							effortOptions={buildChatAgentEffortOptions(effectiveAgentId)}
 							onModelChange={(value) => updateOpaqueSetting("modelId", value)}
 							onEffortChange={(value) => updateOpaqueSetting("reasoningEffort", value)}
 						/>
