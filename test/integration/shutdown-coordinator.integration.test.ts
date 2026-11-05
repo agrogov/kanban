@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -77,7 +77,12 @@ function createBoard(taskIds: { inProgress?: string[]; review?: string[] }): Run
 	};
 }
 
-function createSession(taskId: string, state: "running" | "awaiting_review" | "idle"): RuntimeTaskSessionSummary {
+function createSession(
+	taskId: string,
+	state: "running" | "awaiting_review" | "idle",
+	overrides: Partial<RuntimeTaskSessionSummary> = {},
+): RuntimeTaskSessionSummary {
+	const lastHookAt = Date.now() - 500;
 	return {
 		taskId,
 		state,
@@ -89,15 +94,27 @@ function createSession(taskId: string, state: "running" | "awaiting_review" | "i
 		lastOutputAt: state === "idle" ? null : Date.now(),
 		reviewReason: state === "awaiting_review" ? "hook" : null,
 		exitCode: null,
-		lastHookAt: null,
-		latestHookActivity: null,
+		lastHookAt: state === "awaiting_review" ? lastHookAt : null,
+		latestHookActivity:
+			state === "awaiting_review"
+				? {
+						activityText: "Turn complete",
+						toolName: null,
+						toolInputSummary: null,
+						finalMessage: "Landed cleanly on the task branch.",
+						hookEventName: null,
+						notificationType: null,
+						source: null,
+					}
+				: null,
 		modelId: null,
 		reasoningEffort: null,
+		...overrides,
 	};
 }
 
 describe.sequential("shutdown coordinator integration", () => {
-	it("keeps cards in place and only marks their sessions interrupted on shutdown", async () => {
+	it("keeps cards in place, interrupts in-flight turns, and preserves finished turns on shutdown", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("kanban-shutdown-scope-");
 			try {
@@ -111,12 +128,15 @@ describe.sequential("shutdown coordinator integration", () => {
 				const managedInitial = await loadWorkspaceState(managedProjectPath);
 				await saveWorkspaceState(managedProjectPath, {
 					board: createBoard({
-						inProgress: ["managed-running", "managed-missing-session"],
-						review: ["managed-idle"],
+						inProgress: ["managed-running", "managed-stale-running", "managed-missing-session"],
+						review: ["managed-idle", "managed-awaiting-review"],
 					}),
 					sessions: {
 						"managed-running": createSession("managed-running", "running"),
+						// Persisted as running, but the runtime no longer holds a live summary for it.
+						"managed-stale-running": createSession("managed-stale-running", "running"),
 						"managed-idle": createSession("managed-idle", "idle"),
+						"managed-awaiting-review": createSession("managed-awaiting-review", "awaiting_review"),
 					},
 					expectedRevision: managedInitial.revision,
 				});
@@ -124,22 +144,43 @@ describe.sequential("shutdown coordinator integration", () => {
 				const indexedInitial = await loadWorkspaceState(indexedProjectPath);
 				await saveWorkspaceState(indexedProjectPath, {
 					board: createBoard({
-						inProgress: ["indexed-missing-session"],
+						inProgress: ["indexed-running", "indexed-missing-session"],
 						review: ["indexed-awaiting-review"],
 					}),
 					sessions: {
+						"indexed-running": createSession("indexed-running", "running"),
 						"indexed-awaiting-review": createSession("indexed-awaiting-review", "awaiting_review"),
 					},
 					expectedRevision: indexedInitial.revision,
 				});
 
 				let didCloseRuntimeServer = false;
+				// Mirrors the real runtime: `markInterruptedAndStopAll` kills the PTY and the exit
+				// handler asynchronously rewrites the live summary to `interrupted`.
+				let didStopManagedSessions = false;
+				const liveManagedSummaries = (): RuntimeTaskSessionSummary[] => {
+					if (!didStopManagedSessions) {
+						return [createSession("managed-running", "running")];
+					}
+					return [
+						{
+							...createSession("managed-running", "running"),
+							state: "interrupted",
+							reviewReason: "interrupted",
+							pid: null,
+						},
+					];
+				};
 				const managedTerminalManager = {
-					markInterruptedAndStopAll: () => [createSession("managed-running", "running")],
-					listSummaries: () => [createSession("managed-running", "running")],
+					markInterruptedAndStopAll: () => {
+						const stopped = liveManagedSummaries();
+						didStopManagedSessions = true;
+						return stopped;
+					},
+					listSummaries: () => liveManagedSummaries(),
 					getSummary: (taskId: string) => {
 						if (taskId === "managed-running") {
-							return createSession("managed-running", "running");
+							return liveManagedSummaries()[0] ?? null;
 						}
 						if (taskId === "managed-idle") {
 							return createSession("managed-idle", "idle");
@@ -152,7 +193,8 @@ describe.sequential("shutdown coordinator integration", () => {
 						listManagedWorkspaces: () => [
 							{
 								workspaceId: "managed-project",
-								workspacePath: managedProjectPath,
+								// Canonical path, as the registry stores it, so the indexed-workspace pass skips it.
+								workspacePath: realpathSync(managedProjectPath),
 								terminalManager: managedTerminalManager,
 							},
 						],
@@ -171,14 +213,36 @@ describe.sequential("shutdown coordinator integration", () => {
 				expect(columnOf(managedAfter.board, "managed-running")).toBe("in_progress");
 				expect(columnOf(managedAfter.board, "managed-idle")).toBe("review");
 				expect(columnOf(managedAfter.board, "managed-missing-session")).toBe("in_progress");
+
+				// A turn that was actually in flight becomes resumable, from the live runtime...
 				expect(managedAfter.sessions["managed-running"]?.state).toBe("interrupted");
-				expect(managedAfter.sessions["managed-idle"]?.state).toBe("interrupted");
+				expect(managedAfter.sessions["managed-running"]?.reviewReason).toBe("interrupted");
+				// ...and from a persisted `running` summary whose runtime entry is already gone.
+				expect(managedAfter.sessions["managed-stale-running"]?.state).toBe("interrupted");
+				expect(managedAfter.sessions["managed-stale-running"]?.reviewReason).toBe("interrupted");
+
+				// `awaiting_review` is the completed state: it must survive a restart unchanged so a
+				// finished task still reads as finished instead of being auto-trashed on load.
+				const managedAwaitingReview = managedAfter.sessions["managed-awaiting-review"];
+				expect(managedAwaitingReview?.state).toBe("awaiting_review");
+				expect(managedAwaitingReview?.reviewReason).toBe("hook");
+				expect(managedAwaitingReview?.lastHookAt).not.toBeNull();
+				expect(managedAwaitingReview?.latestHookActivity?.activityText).toBe("Turn complete");
+				expect(managedAwaitingReview?.latestHookActivity?.finalMessage).toBe("Landed cleanly on the task branch.");
+				// `idle` and `failed` are durable outcomes too, not interruptions.
+				expect(managedAfter.sessions["managed-idle"]?.state).toBe("idle");
+				expect(managedAfter.sessions["managed-idle"]?.reviewReason).toBeNull();
 				expect(managedAfter.sessions["managed-missing-session"]).toBeUndefined();
 
 				const indexedAfter = await loadWorkspaceState(indexedProjectPath);
 				expect(columnOf(indexedAfter.board, "indexed-awaiting-review")).toBe("review");
 				expect(columnOf(indexedAfter.board, "indexed-missing-session")).toBe("in_progress");
-				expect(indexedAfter.sessions["indexed-awaiting-review"]?.state).toBe("interrupted");
+				expect(indexedAfter.sessions["indexed-awaiting-review"]?.state).toBe("awaiting_review");
+				expect(indexedAfter.sessions["indexed-awaiting-review"]?.reviewReason).toBe("hook");
+				expect(indexedAfter.sessions["indexed-awaiting-review"]?.latestHookActivity?.finalMessage).toBe(
+					"Landed cleanly on the task branch.",
+				);
+				expect(indexedAfter.sessions["indexed-running"]?.state).toBe("interrupted");
 				expect(indexedAfter.sessions["indexed-missing-session"]).toBeUndefined();
 			} finally {
 				cleanup();

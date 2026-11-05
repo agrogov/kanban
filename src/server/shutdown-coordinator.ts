@@ -1,6 +1,5 @@
 import type { RuntimeTaskSessionSummary, RuntimeWorkspaceStateResponse } from "../core/api-contract";
 import { listWorkspaceIndexEntries, loadWorkspaceState, saveWorkspaceState } from "../state/workspace-state";
-import type { TerminalSessionManager } from "../terminal/session-manager";
 import { removeTaskWorktreeSetupLock } from "../workspace/task-worktree";
 import type { WorkspaceRegistry } from "./workspace-registry";
 import { collectProjectWorktreeTaskIdsForRemoval } from "./workspace-registry";
@@ -14,6 +13,11 @@ export interface RuntimeShutdownCoordinatorDependencies {
 
 // Shutdown only marks sessions as interrupted. Cards stay in their column and their worktrees stay on disk,
 // so committed and uncommitted task work survives a restart and the user can resume the task.
+//
+// Only a turn that was actually in flight (`running`) can be interrupted. `awaiting_review` is the
+// completed state and `idle`/`failed` are durable outcomes, so those records are left untouched:
+// overwriting them would make a finished task read and behave as interrupted after the restart
+// (the UI auto-trashes cards whose session turns `interrupted`).
 async function persistInterruptedSessions(
 	workspacePath: string,
 	interruptedTaskIds: string[],
@@ -31,15 +35,19 @@ async function persistInterruptedSessions(
 	};
 	for (const taskId of interruptedTaskIds) {
 		const summary = options?.resolveSummary?.(taskId) ?? workspaceState.sessions[taskId] ?? null;
-		if (summary) {
-			nextSessions[taskId] = {
-				...summary,
-				state: "interrupted",
-				reviewReason: "interrupted",
-				pid: null,
-				updatedAt: Date.now(),
-			};
+		// The exit handler may already have flipped the live summary to `interrupted` while the
+		// PTY was killed, so that state is interruptible too. Anything else (`awaiting_review`,
+		// `idle`, `failed`) is a finished outcome and must not be downgraded to interrupted.
+		if (!summary || !isInterruptibleSessionState(summary.state)) {
+			continue;
 		}
+		nextSessions[taskId] = {
+			...summary,
+			state: "interrupted",
+			reviewReason: "interrupted",
+			pid: null,
+			updatedAt: Date.now(),
+		};
 	}
 	await saveWorkspaceState(workspacePath, {
 		board: workspaceState.board,
@@ -63,29 +71,42 @@ async function cleanupTaskWorktreeSetupLocks(
 	);
 }
 
-function shouldInterruptSessionOnShutdown(summary: RuntimeTaskSessionSummary): boolean {
-	if (summary.state === "running") {
-		return true;
-	}
-	return summary.state === "awaiting_review";
+// Only a turn that was actually in flight can be interrupted. `awaiting_review` is the completed
+// state and `idle`/`failed` are durable outcomes, so they never become `interrupted` on shutdown.
+function isInterruptibleSessionState(state: RuntimeTaskSessionSummary["state"]): boolean {
+	return state === "running" || state === "interrupted";
+}
+
+function isTurnInFlightOnShutdown(summary: RuntimeTaskSessionSummary): boolean {
+	return summary.state === "running";
 }
 
 function collectShutdownInterruptedTaskIds(
-	interruptedSummaries: RuntimeTaskSessionSummary[],
-	terminalManager: TerminalSessionManager,
+	summariesBeforeStop: RuntimeTaskSessionSummary[],
+	stoppedSummaries: RuntimeTaskSessionSummary[],
 ): string[] {
-	const taskIds = new Set(interruptedSummaries.map((summary) => summary.taskId));
-	for (const summary of terminalManager.listSummaries()) {
-		if (!shouldInterruptSessionOnShutdown(summary)) {
-			continue;
+	const taskIds = new Set<string>();
+	for (const summary of [...summariesBeforeStop, ...stoppedSummaries]) {
+		if (isTurnInFlightOnShutdown(summary)) {
+			taskIds.add(summary.taskId);
 		}
-		taskIds.add(summary.taskId);
 	}
 	return Array.from(taskIds);
 }
 
-function collectWorkColumnTaskIds(workspaceState: RuntimeWorkspaceStateResponse): string[] {
-	return Array.from(collectProjectWorktreeTaskIdsForRemoval(workspaceState.board));
+// Cards in a work column can keep a persisted `running` summary after their runtime entry is gone
+// (crash, forced quit, a restart that lost the live session). Those turns were still in flight when
+// they stopped, so they are interruptible and resumable. The state check is what keeps the other
+// work-column cards (finished review cards, idle sessions) untouched.
+function collectInFlightWorkColumnTaskIds(workspaceState: RuntimeWorkspaceStateResponse): string[] {
+	const taskIds: string[] = [];
+	for (const taskId of collectProjectWorktreeTaskIdsForRemoval(workspaceState.board)) {
+		const summary = workspaceState.sessions[taskId];
+		if (summary && isTurnInFlightOnShutdown(summary)) {
+			taskIds.push(taskId);
+		}
+	}
+	return taskIds;
 }
 
 export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDependencies): Promise<void> {
@@ -103,15 +124,18 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 	const managedWorkspacePaths = new Set<string>();
 
 	for (const { workspacePath, terminalManager } of deps.workspaceRegistry.listManagedWorkspaces()) {
-		const interrupted = terminalManager.markInterruptedAndStopAll();
-		const interruptedTaskIds = new Set(collectShutdownInterruptedTaskIds(interrupted, terminalManager));
+		// Snapshot before stopping: killing a session asynchronously flips its live summary to
+		// `interrupted`, which would hide which turns were actually in flight.
+		const summariesBeforeStop = terminalManager.listSummaries();
+		const stoppedSummaries = terminalManager.markInterruptedAndStopAll();
 		if (!workspacePath) {
 			continue;
 		}
 		managedWorkspacePaths.add(workspacePath);
 		try {
 			const workspaceState = await loadWorkspaceState(workspacePath);
-			for (const taskId of collectWorkColumnTaskIds(workspaceState)) {
+			const interruptedTaskIds = new Set(collectShutdownInterruptedTaskIds(summariesBeforeStop, stoppedSummaries));
+			for (const taskId of collectInFlightWorkColumnTaskIds(workspaceState)) {
 				interruptedTaskIds.add(taskId);
 			}
 			interruptedByWorkspace.push({
@@ -133,7 +157,7 @@ export async function shutdownRuntimeServer(deps: RuntimeShutdownCoordinatorDepe
 		}
 		try {
 			const workspaceState = await loadWorkspaceState(workspace.repoPath);
-			const interruptedTaskIds = collectWorkColumnTaskIds(workspaceState);
+			const interruptedTaskIds = collectInFlightWorkColumnTaskIds(workspaceState);
 			if (interruptedTaskIds.length === 0) {
 				continue;
 			}

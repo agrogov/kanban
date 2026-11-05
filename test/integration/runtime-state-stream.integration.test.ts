@@ -1232,8 +1232,10 @@ describe.sequential("runtime state stream integration", () => {
 			const trashCards = finalState.payload.board.columns.find((column) => column.id === "trash")?.cards ?? [];
 			expect(reviewCards.some((card) => card.id === taskId)).toBe(true);
 			expect(trashCards.some((card) => card.id === taskId)).toBe(false);
-			expect(finalState.payload.sessions[taskId]?.state).toBe("interrupted");
-			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("interrupted");
+			// The turn already finished before shutdown, so the card must still read as finished
+			// afterwards instead of being rewritten to `interrupted`.
+			expect(finalState.payload.sessions[taskId]?.state).toBe("awaiting_review");
+			expect(finalState.payload.sessions[taskId]?.reviewReason).toBe("exit");
 			const workspaceInfo = await requestJson<RuntimeTaskWorkspaceInfoResponse>({
 				baseUrl: `http://127.0.0.1:${secondPort}`,
 				procedure: "workspace.getTaskContext",
