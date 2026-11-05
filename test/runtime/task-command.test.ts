@@ -5,10 +5,17 @@ import {
 	buildTaskAgentSettingsForUpdate,
 	formatTaskAgentSettings,
 	resolveSettingsFlag,
+	type StartTaskDependencies,
 	shouldWarnOnExplicitAgentId,
+	startTask,
 	warnOnAgentSettingsMechanismGaps,
 } from "../../src/commands/task";
-import type { RuntimeTaskAgentSettings } from "../../src/core/api-contract";
+import type {
+	RuntimeBoardCard,
+	RuntimeTaskAgentSettings,
+	RuntimeTaskSessionSummary,
+	RuntimeWorkspaceStateResponse,
+} from "../../src/core/api-contract";
 
 describe("buildTaskAgentSettingsForCreate", () => {
 	it("returns undefined when no settings fields are provided", () => {
@@ -197,5 +204,143 @@ describe("formatTaskAgentSettings", () => {
 
 	it("emits an empty object when settings are absent", () => {
 		expect(formatTaskAgentSettings(undefined)).toEqual({});
+	});
+});
+
+function createTaskSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
+	return {
+		taskId: "task-1",
+		state: "running",
+		agentId: "pi-chat",
+		workspacePath: "/tmp/worktree",
+		pid: null,
+		startedAt: Date.now(),
+		updatedAt: Date.now(),
+		lastOutputAt: Date.now(),
+		reviewReason: null,
+		exitCode: null,
+		lastHookAt: null,
+		latestHookActivity: null,
+		modelId: null,
+		reasoningEffort: null,
+		latestTurnCheckpoint: null,
+		previousTurnCheckpoint: null,
+		...overrides,
+	};
+}
+
+function createStartTaskState(session: RuntimeTaskSessionSummary | null): RuntimeWorkspaceStateResponse {
+	const now = Date.now();
+	const card: RuntimeBoardCard = {
+		id: "task-1",
+		title: "Write files",
+		prompt: "Edit five files",
+		startInPlanMode: false,
+		baseRef: "main",
+		createdAt: now,
+		updatedAt: now,
+	};
+	return {
+		repoPath: "/tmp/repo",
+		statePath: "/tmp/repo/.kanban/state.json",
+		git: { currentBranch: "main", defaultBranch: "main", branches: ["main"] },
+		board: {
+			columns: [
+				{ id: "backlog", title: "Backlog", cards: [] },
+				{ id: "in_progress", title: "In Progress", cards: [card] },
+				{ id: "review", title: "Review", cards: [] },
+				{ id: "trash", title: "Done", cards: [] },
+			],
+			dependencies: [],
+		},
+		sessions: session ? { "task-1": session } : {},
+		revision: 1,
+	};
+}
+
+interface StartTaskHarness {
+	dependencies: StartTaskDependencies;
+	startTaskSession: ReturnType<typeof vi.fn>;
+	ensureWorktree: ReturnType<typeof vi.fn>;
+}
+
+/** Builds fakes for the two state reads (initial + pre-launch re-check) `startTask` performs. */
+function createStartTaskHarness(states: RuntimeWorkspaceStateResponse[]): StartTaskHarness {
+	let readIndex = 0;
+	const getState = vi.fn(async () => {
+		const state = states[Math.min(readIndex, states.length - 1)];
+		readIndex += 1;
+		return state;
+	});
+	const ensureWorktree = vi.fn(async () => ({ ok: true }));
+	const startTaskSession = vi.fn(async () => ({
+		ok: true,
+		summary: createTaskSummary({ state: "running", agentId: "claude-chat" }),
+	}));
+	const stopTaskSession = vi.fn();
+	const runtimeClient = {
+		workspace: {
+			getState: { query: getState },
+			ensureWorktree: { mutate: ensureWorktree },
+		},
+		runtime: {
+			startTaskSession: { mutate: startTaskSession },
+			stopTaskSession: { mutate: stopTaskSession },
+		},
+	};
+	const dependencies = {
+		resolveWorkspaceRepoPath: async () => "/tmp/repo",
+		ensureRuntimeWorkspace: async () => "workspace-1",
+		createRuntimeClient: () => runtimeClient as never,
+		updateRuntimeWorkspaceState: async (_client, _repoPath, mutate) => mutate(states[states.length - 1]).value,
+	} satisfies StartTaskDependencies;
+	return { dependencies, startTaskSession, ensureWorktree };
+}
+
+describe("startTask", () => {
+	it("refuses to start a task whose native-chat session is still running", async () => {
+		const harness = createStartTaskHarness([
+			createStartTaskState(createTaskSummary({ state: "running", agentId: "pi-chat" })),
+		]);
+
+		await expect(startTask({ cwd: "/tmp/repo", taskId: "task-1" }, harness.dependencies)).rejects.toThrow(
+			/already in progress with a live session/,
+		);
+		expect(harness.ensureWorktree).not.toHaveBeenCalled();
+		expect(harness.startTaskSession).not.toHaveBeenCalled();
+	});
+
+	it("refuses to start a task awaiting review, since the agent may still be attached", async () => {
+		const harness = createStartTaskHarness([
+			createStartTaskState(createTaskSummary({ state: "awaiting_review", agentId: "claude-chat" })),
+		]);
+
+		await expect(startTask({ cwd: "/tmp/repo", taskId: "task-1" }, harness.dependencies)).rejects.toThrow(
+			/already in progress with a live session/,
+		);
+		expect(harness.startTaskSession).not.toHaveBeenCalled();
+	});
+
+	it("re-checks state right before launch and aborts when a session appeared meanwhile", async () => {
+		const harness = createStartTaskHarness([
+			createStartTaskState(null),
+			createStartTaskState(createTaskSummary({ state: "running", agentId: "pi-chat" })),
+		]);
+
+		await expect(startTask({ cwd: "/tmp/repo", taskId: "task-1" }, harness.dependencies)).rejects.toThrow(
+			/already in progress with a live session/,
+		);
+		expect(harness.ensureWorktree).toHaveBeenCalledTimes(1);
+		expect(harness.startTaskSession).not.toHaveBeenCalled();
+	});
+
+	it("starts the task when the existing session is terminal", async () => {
+		const harness = createStartTaskHarness([
+			createStartTaskState(createTaskSummary({ state: "interrupted", reviewReason: "interrupted" })),
+		]);
+
+		await startTask({ cwd: "/tmp/repo", taskId: "task-1" }, harness.dependencies);
+
+		expect(harness.startTaskSession).toHaveBeenCalledTimes(1);
 	});
 });

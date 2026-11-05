@@ -7,6 +7,7 @@ import type {
 	RuntimeBoardColumnId,
 	RuntimeBoardDependency,
 	RuntimeTaskAgentSettings,
+	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
 import { runtimeAgentIdSchema } from "../core/api-contract";
@@ -23,6 +24,7 @@ import {
 	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
 } from "../core/task-board-mutations";
+import { isTerminalTaskSessionState } from "../core/task-session-state";
 import { resolveProjectInputPath } from "../projects/project-path";
 import { loadWorkspaceContext, mutateWorkspaceState } from "../state/workspace-state";
 import type { RuntimeAppRouter } from "../trpc/app-router";
@@ -708,10 +710,51 @@ async function unlinkTasks(input: { cwd: string; dependencyId: string; projectPa
 	};
 }
 
-async function startTask(input: { cwd: string; taskId: string; projectPath?: string }): Promise<JsonRecord> {
-	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
-	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
-	const runtimeClient = createRuntimeTrpcClient(workspaceId);
+export interface StartTaskDependencies {
+	resolveWorkspaceRepoPath: (projectPath: string | undefined, cwd: string) => Promise<string>;
+	ensureRuntimeWorkspace: (workspaceRepoPath: string) => Promise<string>;
+	createRuntimeClient: (workspaceId: string) => ReturnType<typeof createRuntimeTrpcClient>;
+	updateRuntimeWorkspaceState: typeof updateRuntimeWorkspaceState;
+}
+
+const defaultStartTaskDependencies: StartTaskDependencies = {
+	resolveWorkspaceRepoPath,
+	ensureRuntimeWorkspace,
+	createRuntimeClient: createRuntimeTrpcClient,
+	updateRuntimeWorkspaceState,
+};
+
+/**
+ * Refuses to start a second agent for a card that is already in progress while a
+ * live session is attached to it.
+ *
+ * Without this, a stale or missing session record (native-chat sessions had no
+ * summary until the runtime state hub was plumbed into workspace state) made
+ * `task start` spawn another agent into a worktree the first agent was writing to.
+ */
+export function assertTaskCanStartSession(input: {
+	columnId: RuntimeBoardColumnId;
+	taskId: string;
+	session: RuntimeTaskSessionSummary | null;
+}): void {
+	const session = input.session;
+	if (input.columnId !== "in_progress" || !session || isTerminalTaskSessionState(session.state)) {
+		return;
+	}
+	const agentLabel = session.agentId ?? "an agent";
+	throw new Error(
+		`Task "${input.taskId}" is already in progress with a live session (${session.state}, ${agentLabel}). ` +
+			"Refusing to start a second agent in the same worktree; stop the running session or wait for it to finish.",
+	);
+}
+
+export async function startTask(
+	input: { cwd: string; taskId: string; projectPath?: string },
+	dependencies: StartTaskDependencies = defaultStartTaskDependencies,
+): Promise<JsonRecord> {
+	const workspaceRepoPath = await dependencies.resolveWorkspaceRepoPath(input.projectPath, input.cwd);
+	const workspaceId = await dependencies.ensureRuntimeWorkspace(workspaceRepoPath);
+	const runtimeClient = dependencies.createRuntimeClient(workspaceId);
 	const runtimeState = await runtimeClient.workspace.getState.query();
 	const fromColumnId = getTaskColumnId(runtimeState.board, input.taskId);
 	if (!fromColumnId) {
@@ -730,6 +773,12 @@ async function startTask(input: { cwd: string; taskId: string; projectPath?: str
 		throw new Error(`Task "${input.taskId}" could not be resolved.`);
 	}
 
+	assertTaskCanStartSession({
+		columnId: fromColumnId,
+		taskId: task.id,
+		session: runtimeState.sessions[task.id] ?? null,
+	});
+
 	const existingSession = runtimeState.sessions[task.id] ?? null;
 	const shouldStartSession = !existingSession || existingSession.state !== "running";
 
@@ -741,6 +790,15 @@ async function startTask(input: { cwd: string; taskId: string; projectPath?: str
 		if (!ensured.ok) {
 			throw new Error(ensured.error ?? "Could not ensure task worktree.");
 		}
+
+		// The state read above is racy: an agent may have been started between it
+		// and this point. Re-read right before launching so the guard covers that window.
+		const latestState = await runtimeClient.workspace.getState.query();
+		assertTaskCanStartSession({
+			columnId: getTaskColumnId(latestState.board, task.id) ?? fromColumnId,
+			taskId: task.id,
+			session: latestState.sessions[task.id] ?? null,
+		});
 
 		const started = await runtimeClient.runtime.startTaskSession.mutate({
 			taskId: task.id,
@@ -756,7 +814,7 @@ async function startTask(input: { cwd: string; taskId: string; projectPath?: str
 		}
 	}
 
-	const moved = await updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (latestState) => {
+	const moved = await dependencies.updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (latestState) => {
 		const movement = moveTaskToColumn(latestState.board, input.taskId, "in_progress");
 		if (!movement.task) {
 			throw new Error(`Task "${input.taskId}" could not be resolved.`);

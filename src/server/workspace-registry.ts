@@ -4,8 +4,10 @@ import type {
 	RuntimeBoardData,
 	RuntimeProjectSummary,
 	RuntimeProjectTaskCounts,
+	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
+import { selectPreferredTaskSessionSummary } from "../core/task-session-state";
 import {
 	listWorkspaceIndexEntries,
 	loadWorkspaceBoardById,
@@ -29,6 +31,14 @@ export interface CreateWorkspaceRegistryDependencies {
 	hasGitRepository: (path: string) => boolean;
 	pathIsDirectory: (path: string) => Promise<boolean>;
 	onTerminalManagerReady?: (workspaceId: string, manager: TerminalSessionManager) => void;
+	/**
+	 * Live summaries of the native-chat backends for a workspace.
+	 *
+	 * Native-chat sessions have no PTY, so the terminal manager cannot see them.
+	 * The runtime state hub tracks them and exposes them here; without this the
+	 * CLI sees `session: null` while an agent is actively writing.
+	 */
+	listClineTaskSessionSummaries?: (workspaceId: string) => RuntimeTaskSessionSummary[];
 }
 
 export interface DisposeWorkspaceRegistryOptions {
@@ -288,6 +298,14 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 		};
 	};
 
+	const collectLiveSessionSummaries = (
+		workspaceId: string,
+		terminalManager: TerminalSessionManager | null,
+	): RuntimeTaskSessionSummary[] => [
+		...(terminalManager?.listSummaries() ?? []),
+		...(deps.listClineTaskSessionSummaries?.(workspaceId) ?? []),
+	];
+
 	const summarizeProjectTaskCounts = async (
 		workspaceId: string,
 		_repoPath: string,
@@ -295,14 +313,11 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 		try {
 			const board = await loadWorkspaceBoardById(workspaceId);
 			const persistedCounts = countTasksByColumn(board);
-			const terminalManager = getTerminalManagerForWorkspace(workspaceId);
-			if (!terminalManager) {
-				projectTaskCountsByWorkspaceId.set(workspaceId, persistedCounts);
-				return persistedCounts;
-			}
 			const liveSessionsByTaskId: RuntimeWorkspaceStateResponse["sessions"] = {};
-			for (const summary of terminalManager.listSummaries()) {
-				liveSessionsByTaskId[summary.taskId] = summary;
+			const liveSummaries = collectLiveSessionSummaries(workspaceId, getTerminalManagerForWorkspace(workspaceId));
+			for (const summary of liveSummaries) {
+				liveSessionsByTaskId[summary.taskId] =
+					selectPreferredTaskSessionSummary(liveSessionsByTaskId[summary.taskId], summary) ?? summary;
 			}
 			const nextCounts = applyLiveSessionStateToProjectTaskCounts(persistedCounts, board, liveSessionsByTaskId);
 			projectTaskCountsByWorkspaceId.set(workspaceId, nextCounts);
@@ -318,8 +333,12 @@ export async function createWorkspaceRegistry(deps: CreateWorkspaceRegistryDepen
 	): Promise<RuntimeWorkspaceStateResponse> => {
 		const response = await loadWorkspaceState(workspacePath);
 		const terminalManager = await ensureTerminalManagerForWorkspace(workspaceId, workspacePath);
-		for (const summary of terminalManager.listSummaries()) {
-			response.sessions[summary.taskId] = summary;
+		// Overlay live sessions from every backend. Native-chat sessions have no
+		// PTY, so they are only visible through the runtime state hub; merging them
+		// here is what makes `task list` and `task start` see a running agent.
+		for (const summary of collectLiveSessionSummaries(workspaceId, terminalManager)) {
+			response.sessions[summary.taskId] =
+				selectPreferredTaskSessionSummary(response.sessions[summary.taskId], summary) ?? summary;
 		}
 		return response;
 	};

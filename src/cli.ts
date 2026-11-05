@@ -472,6 +472,10 @@ async function startServer(): Promise<{
 			runtimeStateHub?.trackTerminalManager(workspaceId, manager);
 			autoReviewReconciler?.trackWorkspace(workspaceId);
 		},
+		// The hub is created below (it depends on this registry), but workspace state
+		// snapshots are only built after startup, so this lazy read is safe. It is what
+		// lets `kanban task list/start` see live native-chat sessions that have no PTY.
+		listClineTaskSessionSummaries: (workspaceId) => runtimeStateHub?.listClineTaskSessionSummaries(workspaceId) ?? [],
 	});
 	runtimeStateHub = createRuntimeStateHub({
 		workspaceRegistry,

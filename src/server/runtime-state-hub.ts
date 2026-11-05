@@ -42,6 +42,12 @@ export interface CreateRuntimeStateHubDependencies {
 export interface RuntimeStateHub {
 	trackTerminalManager: (workspaceId: string, manager: TerminalSessionManager) => void;
 	trackClineTaskSessionService: (workspaceId: string, workspacePath: string, service: ClineTaskSessionService) => void;
+	/**
+	 * Live summaries of the native Cline/chat backends tracked for a workspace.
+	 * These backends have no PTY, so they never reach the terminal manager and
+	 * must be merged into workspace state from here.
+	 */
+	listClineTaskSessionSummaries: (workspaceId: string) => RuntimeTaskSessionSummary[];
 	broadcastTaskChatMessage: (workspaceId: string, taskId: string, message: ClineTaskMessage) => void;
 	broadcastTaskChatCleared: (workspaceId: string, taskId: string) => void;
 	handleUpgrade: (
@@ -589,6 +595,8 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			});
 			clineMessageUnsubscribeByWorkspaceId.set(workspaceId, unsubscribeMessage);
 		},
+		listClineTaskSessionSummaries: (workspaceId: string) =>
+			Array.from(clinePreviousSummaryByWorkspaceId.get(workspaceId)?.values() ?? []),
 		broadcastTaskChatMessage,
 		broadcastTaskChatCleared,
 		handleUpgrade: (request, socket, head, context) => {
