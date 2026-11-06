@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { createServer, type IncomingMessage } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import { join } from "node:path";
 
@@ -314,7 +314,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	const getRemoteIp = (req: IncomingMessage): string => req.socket.remoteAddress ?? "unknown";
 
 	const tlsConfig = getKanbanRuntimeTls();
-	const requestHandler = async (req: IncomingMessage, res: import("node:http").ServerResponse) => {
+	const requestHandler = async (req: IncomingMessage, res: ServerResponse) => {
 		try {
 			if (handleHttpRequest(req, res).end) {
 				return;

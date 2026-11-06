@@ -1,8 +1,16 @@
+import type { SerializeAddon as SerializeAddonInstance } from "@xterm/addon-serialize";
 import serializeAddonModule from "@xterm/addon-serialize";
+import type { Terminal as HeadlessTerminalInstance, ITerminalInitOnlyOptions, ITerminalOptions } from "@xterm/headless";
 import headlessTerminalModule from "@xterm/headless";
 
-const { SerializeAddon } = serializeAddonModule as typeof import("@xterm/addon-serialize");
-const { Terminal } = headlessTerminalModule as typeof import("@xterm/headless");
+// The default imports above are the CommonJS module objects; only the constructor
+// types come from the package type definitions, per AGENTS.md no-inline-imports.
+const { SerializeAddon } = serializeAddonModule as {
+	SerializeAddon: new () => SerializeAddonInstance;
+};
+const { Terminal } = headlessTerminalModule as {
+	Terminal: new (options?: ITerminalOptions & ITerminalInitOnlyOptions) => HeadlessTerminalInstance;
+};
 
 /**
  * Server-side headless terminal buffer cap (1,000 lines).
