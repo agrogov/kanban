@@ -8,7 +8,6 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
 	formatClineReasoningEffortLabel,
-	formatClineSelectedModelButtonText,
 	resolveClineModelDisplayName,
 } from "@/components/detail-panels/cline-model-picker-options";
 import { Button } from "@/components/ui/button";
@@ -453,7 +452,11 @@ export function BoardCard({
 			settings?.providerId && !settings.modelId
 				? `Provider: ${settings.providerId}`
 				: modelId
-					? resolveClineModelDisplayName(modelId)
+					? // Cline model ids have marketing names; every other agent's ids are opaque and
+						// must be shown as stored, or a coincidental key match would rename them.
+						isClineAgent
+						? resolveClineModelDisplayName(modelId)
+						: modelId
 					: "Default model";
 		const effortLabel = reasoningEffort ? formatClineReasoningEffortLabel(reasoningEffort) : "Default";
 		const modelSummary = `${modelLabel} (${effortLabel})`;

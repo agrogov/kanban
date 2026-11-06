@@ -208,43 +208,91 @@ export function useTaskAgentModelPicker({
 	};
 }
 
-// Effort vocabularies of the native chat agents (mirrors each chat service's accepted levels).
-const CHAT_AGENT_EFFORT_LEVELS: Partial<Record<RuntimeAgentId, string[]>> = {
-	"pi-chat": ["off", "minimal", "low", "medium", "high", "xhigh"],
-	"codex-chat": ["minimal", "low", "medium", "high", "xhigh"],
-	"claude-chat": ["low", "medium", "high", "xhigh", "max"],
-};
-
-function buildChatAgentEffortOptions(agentId: RuntimeAgentId | null): OpaqueSelectOption[] | undefined {
-	return CHAT_AGENT_EFFORT_LEVELS[agentId as RuntimeAgentId]?.map((level) => ({ value: level, label: level }));
+interface ChatAgentCatalog {
+	/** Selectable models, or `undefined` when the agent has no enumerable catalog. */
+	modelOptions: OpaqueSelectOption[] | undefined;
+	/** Label of the "no override" model entry, naming the model the agent's own CLI would use. */
+	defaultModelLabel: string;
+	/** Effort levels the agent's runtime accepts, or `undefined` when it takes no effort override. */
+	effortOptions: OpaqueSelectOption[] | undefined;
+	isLoadingModels: boolean;
 }
 
-/** Model catalog of a native chat agent (claude-chat / codex-chat / pi-chat), read from its own config. */
-function useChatAgentModelOptions(agentId: RuntimeAgentId | null, enabled: boolean): OpaqueSelectOption[] | undefined {
-	const [options, setOptions] = useState<OpaqueSelectOption[] | undefined>(undefined);
+interface ChatAgentCatalogResponse {
+	models: Array<{ id: string; label: string }>;
+	effortLevels: string[];
+	defaultModelId: string | null;
+}
+
+const EMPTY_CHAT_AGENT_CATALOG: ChatAgentCatalogResponse = { models: [], effortLevels: [], defaultModelId: null };
+
+/**
+ * Model and effort catalog of a native chat agent (claude-chat / codex-chat / pi-chat).
+ *
+ * Both come from `getChatAgentModels`, which reads the agent's own config for models and its
+ * SDK-derived union for effort levels. Neither list is restated here: a copy in the UI drifts
+ * the moment a backend accepts a new level, and the launch-time validator then silently drops
+ * a value the picker never offered.
+ */
+function useChatAgentCatalog(
+	workspaceId: string | null,
+	agentId: RuntimeAgentId | null,
+	enabled: boolean,
+): ChatAgentCatalog {
+	const [catalog, setCatalog] = useState<ChatAgentCatalogResponse | null>(null);
+	const [isLoadingModels, setIsLoadingModels] = useState(false);
 	const chatAgentId = enabled && agentId !== "cline" && isNativeChatAgentSelected(agentId) ? agentId : null;
+
 	useEffect(() => {
 		if (!chatAgentId) {
-			setOptions(undefined);
+			setCatalog(null);
 			return;
 		}
 		let cancelled = false;
-		void fetchChatAgentModels(null, chatAgentId)
+		setIsLoadingModels(true);
+		void fetchChatAgentModels(workspaceId, chatAgentId)
 			.then((response) => {
 				if (!cancelled) {
-					setOptions(response.models.map((model) => ({ value: model.id, label: model.label })));
+					setCatalog({
+						models: response.models,
+						effortLevels: response.effortLevels,
+						defaultModelId: response.defaultModelId ?? null,
+					});
 				}
 			})
 			.catch(() => {
 				if (!cancelled) {
-					setOptions(undefined);
+					// No catalog (unreadable config, agent not installed): the fields fall back to
+					// free text, which every agent still accepts.
+					setCatalog(null);
+				}
+			})
+			.finally(() => {
+				if (!cancelled) {
+					setIsLoadingModels(false);
 				}
 			});
 		return () => {
 			cancelled = true;
 		};
-	}, [chatAgentId]);
-	return options;
+	}, [chatAgentId, workspaceId]);
+
+	return useMemo<ChatAgentCatalog>(() => {
+		const resolved = catalog ?? EMPTY_CHAT_AGENT_CATALOG;
+		const defaultModel = resolved.models.find((model) => model.id === resolved.defaultModelId) ?? null;
+		return {
+			// Same convention as the Cline picker: the "no override" entry names the model the
+			// agent would use anyway, and that model is not repeated in the explicit list.
+			modelOptions: catalog
+				? resolved.models
+						.filter((model) => model.id !== defaultModel?.id)
+						.map((model) => ({ value: model.id, label: model.label }))
+				: undefined,
+			defaultModelLabel: defaultModel ? `Default (${defaultModel.label})` : "Default",
+			effortOptions: catalog ? resolved.effortLevels.map((level) => ({ value: level, label: level })) : undefined,
+			isLoadingModels,
+		};
+	}, [catalog, isLoadingModels]);
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +319,7 @@ export function TaskAgentModelPicker({
 	isLoadingProviders,
 	isLoadingModels,
 	onPopoverOpenChange,
+	workspaceId = null,
 	defaultAgentId,
 	defaultProviderId,
 	defaultReasoningEffort,
@@ -288,6 +337,8 @@ export function TaskAgentModelPicker({
 	isLoadingProviders: boolean;
 	isLoadingModels: boolean;
 	onPopoverOpenChange?: (open: boolean) => void;
+	/** Workspace the card belongs to; the chat-agent catalog is read from that workspace's runtime. */
+	workspaceId?: string | null;
 	/** The default agent ID from runtimeConfig — used to decide if Cline pickers should show by default */
 	defaultAgentId?: RuntimeAgentId | null;
 	/** The default Cline provider ID from runtimeConfig — used to decide if model picker should show by default */
@@ -346,7 +397,7 @@ export function TaskAgentModelPicker({
 	});
 
 	const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
-	const chatModelOptions = useChatAgentModelOptions(effectiveAgentId, isSettingsExpanded);
+	const chatCatalog = useChatAgentCatalog(workspaceId, effectiveAgentId, isSettingsExpanded);
 
 	return (
 		<div className="flex flex-col gap-2">
@@ -419,8 +470,10 @@ export function TaskAgentModelPicker({
 							docsUrl={effectiveCapabilities?.docsUrl}
 							showModelInput={showFreeTextModelInput}
 							showEffortInput={showFreeTextEffortInput}
-							modelOptions={chatModelOptions}
-							effortOptions={buildChatAgentEffortOptions(effectiveAgentId)}
+							modelOptions={chatCatalog.modelOptions}
+							modelDefaultLabel={chatCatalog.defaultModelLabel}
+							isLoadingOptions={chatCatalog.isLoadingModels}
+							effortOptions={chatCatalog.effortOptions}
 							onModelChange={(value) => updateOpaqueSetting("modelId", value)}
 							onEffortChange={(value) => updateOpaqueSetting("reasoningEffort", value)}
 						/>

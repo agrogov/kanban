@@ -13,11 +13,14 @@ function OpaqueSelect({
 	value,
 	options,
 	ariaLabel,
+	defaultLabel = "Default",
 	onChange,
 }: {
 	value: string;
 	options: OpaqueSelectOption[];
 	ariaLabel: string;
+	/** Label of the "no override" entry, so it can name what the agent would use anyway. */
+	defaultLabel?: string;
 	onChange: (value: string) => void;
 }): ReactElement {
 	const hasValue = !value || options.some((option) => option.value === value);
@@ -29,13 +32,22 @@ function OpaqueSelect({
 			aria-label={ariaLabel}
 			onChange={(e) => onChange(e.currentTarget.value)}
 		>
-			<option value="">Default</option>
+			<option value="">{defaultLabel}</option>
 			{hasValue ? null : <option value={value}>{value}</option>}
 			{options.map((option) => (
 				<option key={option.value} value={option.value}>
 					{option.label}
 				</option>
 			))}
+		</NativeSelect>
+	);
+}
+
+/** Placeholder shown while the agent's catalog loads, so the field does not swap widget mid-edit. */
+function OpaqueSelectLoading({ ariaLabel, label }: { ariaLabel: string; label: string }): ReactElement {
+	return (
+		<NativeSelect size="sm" fill disabled aria-label={ariaLabel} value="">
+			<option value="">{label}</option>
 		</NativeSelect>
 	);
 }
@@ -47,6 +59,8 @@ export function OpaqueTaskAgentSettingsFields({
 	showModelInput,
 	showEffortInput,
 	modelOptions,
+	modelDefaultLabel,
+	isLoadingOptions = false,
 	effortOptions,
 	onModelChange,
 	onEffortChange,
@@ -58,6 +72,10 @@ export function OpaqueTaskAgentSettingsFields({
 	showEffortInput: boolean;
 	/** When set, the model field is a dropdown instead of free text. */
 	modelOptions?: OpaqueSelectOption[] | undefined;
+	/** Label of the model dropdown's "no override" entry. */
+	modelDefaultLabel?: string | undefined;
+	/** While true the agent's catalog is still loading, so both fields show a placeholder. */
+	isLoadingOptions?: boolean | undefined;
 	/** When set, the effort field is a dropdown instead of free text. */
 	effortOptions?: OpaqueSelectOption[] | undefined;
 	onModelChange: (value: string) => void;
@@ -73,11 +91,14 @@ export function OpaqueTaskAgentSettingsFields({
 				{showModelInput ? (
 					<div className="min-w-0">
 						<span className="text-micro text-text-secondary block mb-1">Model</span>
-						{modelOptions ? (
+						{isLoadingOptions ? (
+							<OpaqueSelectLoading ariaLabel="Model override" label="Loading models..." />
+						) : modelOptions ? (
 							<OpaqueSelect
 								value={agentSettings?.modelId ?? ""}
 								options={modelOptions}
 								ariaLabel="Model override"
+								defaultLabel={modelDefaultLabel}
 								onChange={onModelChange}
 							/>
 						) : (
@@ -95,7 +116,9 @@ export function OpaqueTaskAgentSettingsFields({
 				{showEffortInput ? (
 					<div className="min-w-0">
 						<span className="text-micro text-text-secondary block mb-1">Reasoning effort</span>
-						{effortOptions ? (
+						{isLoadingOptions ? (
+							<OpaqueSelectLoading ariaLabel="Reasoning effort override" label="Loading levels..." />
+						) : effortOptions ? (
 							<OpaqueSelect
 								value={agentSettings?.reasoningEffort ?? ""}
 								options={effortOptions}

@@ -589,6 +589,7 @@ export function TaskCreateDialog({
 							providerModels={providerModels}
 							isLoadingProviders={isLoadingProviders}
 							isLoadingModels={isLoadingModels}
+							workspaceId={workspaceId}
 							defaultAgentId={defaultAgentId}
 							defaultProviderId={defaultProviderId}
 							defaultReasoningEffort={defaultReasoningEffort}

@@ -446,6 +446,49 @@ describe("BoardCard", () => {
 		expect(container.textContent).not.toContain("GPT-5.5 (High)");
 	});
 
+	it("shows a chat agent's model id verbatim instead of running it through the Cline name map", async () => {
+		await act(async () => {
+			renderWithProviders(
+				<BoardCard
+					card={createCard({
+						agentId: "pi-chat",
+						// A real Pi model id that collides with a Cline catalog key. Renaming it
+						// would report a model the card is not configured to use.
+						agentSettings: {
+							modelId: "anthropic/claude-sonnet-4.6",
+							reasoningEffort: "max",
+						},
+					})}
+					index={0}
+					columnId="backlog"
+					defaultClineModelId="openai/gpt-5.5"
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("Pi (chat view)");
+		expect(container.textContent).toContain("anthropic/claude-sonnet-4.6 (max)");
+		expect(container.textContent).not.toContain("Claude Sonnet 4.6");
+	});
+
+	it("shows the inherited agent and model on a card with no overrides", async () => {
+		await act(async () => {
+			renderWithProviders(
+				<BoardCard
+					card={createCard({})}
+					index={0}
+					columnId="backlog"
+					defaultAgentId="cline"
+					defaultClineModelId="openai/gpt-5.5"
+					defaultClineReasoningEffort="high"
+				/>,
+			);
+		});
+
+		expect(container.textContent).toContain("Cline");
+		expect(container.textContent).toContain("GPT-5.5 (High)");
+	});
+
 	it("shows tool input details in the session preview text", async () => {
 		await act(async () => {
 			renderWithProviders(

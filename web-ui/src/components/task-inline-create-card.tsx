@@ -321,6 +321,7 @@ export function TaskInlineCreateCard({
 						providerModels={providerModels}
 						isLoadingProviders={isLoadingProviders}
 						isLoadingModels={isLoadingModels}
+						workspaceId={workspaceId}
 						defaultAgentId={defaultAgentId}
 						defaultProviderId={defaultProviderId}
 						defaultReasoningEffort={defaultReasoningEffort}

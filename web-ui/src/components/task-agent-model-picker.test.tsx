@@ -12,6 +12,7 @@ import type {
 
 const fetchClineProviderCatalogMock = vi.hoisted(() => vi.fn());
 const fetchClineProviderModelsMock = vi.hoisted(() => vi.fn());
+const fetchChatAgentModelsMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@runtime-agent-catalog", () => ({
 	getRuntimeLaunchSupportedAgentCatalog: vi.fn(() => [
@@ -83,6 +84,20 @@ vi.mock("@runtime-agent-catalog", () => ({
 				providerOverride: "flag",
 				docsUrl: "https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/usage.md",
 			},
+			"pi-chat": {
+				label: "Pi Chat",
+				modelOverride: "flag",
+				effortOverride: "flag",
+				providerOverride: "none",
+				docsUrl: "https://github.com/earendil-works/pi",
+			},
+			"codex-chat": {
+				label: "Codex Chat",
+				modelOverride: "flag",
+				effortOverride: "flag",
+				providerOverride: "none",
+				docsUrl: "https://developers.openai.com/codex",
+			},
 		};
 		const capabilities = capabilitiesByAgent[agentId];
 		if (!capabilities) {
@@ -104,6 +119,9 @@ vi.mock("@runtime-agent-catalog", () => ({
 vi.mock("@/runtime/runtime-config-query", () => ({
 	fetchClineProviderCatalog: fetchClineProviderCatalogMock,
 	fetchClineProviderModels: fetchClineProviderModelsMock,
+	// The picker imports this too; a missing export would be `undefined` and blow up only when
+	// a chat agent is selected, so keep the mock module complete.
+	fetchChatAgentModels: fetchChatAgentModelsMock,
 }));
 
 function createProvider(
@@ -1090,5 +1108,176 @@ describe("TaskAgentModelPicker – inherited default reasoning effort", () => {
 
 		expect(container.textContent).toContain("GPT-5.3 Codex");
 		expect(container.textContent).not.toContain("GPT-5.3 Codex (High)");
+	});
+});
+
+function selectByAriaLabel(label: string): HTMLSelectElement | null {
+	return container.querySelector(`select[aria-label="${label}"]`);
+}
+
+function optionValues(select: HTMLSelectElement): string[] {
+	return Array.from(select.options).map((option) => option.value);
+}
+
+function optionLabels(select: HTMLSelectElement): string[] {
+	return Array.from(select.options).map((option) => option.textContent?.trim() ?? "");
+}
+
+describe("TaskAgentModelPicker – native chat agents", () => {
+	async function renderChatAgentPicker(props: {
+		agentId: RuntimeAgentId;
+		workspaceId?: string | null;
+		agentSettings?: RuntimeTaskAgentSettings;
+	}): Promise<void> {
+		const { TaskAgentModelPicker } = await import("@/components/task-agent-model-picker");
+		await act(async () =>
+			root.render(
+				<TaskAgentModelPicker
+					agentId={props.agentId}
+					onAgentIdChange={() => {}}
+					agentSettings={props.agentSettings}
+					onAgentSettingsChange={() => {}}
+					agentOptions={[{ value: "", label: "Default" }]}
+					clineProviderOptions={[]}
+					clineModelOptions={[]}
+					isLoadingProviders={false}
+					isLoadingModels={false}
+					workspaceId={props.workspaceId ?? null}
+					defaultAgentId={props.agentId}
+				/>,
+			),
+		);
+		const settingsTrigger = Array.from(container.querySelectorAll("button")).find((button) =>
+			button.textContent?.includes("Override Agent Settings"),
+		);
+		expect(settingsTrigger).not.toBeUndefined();
+		await act(async () => {
+			(settingsTrigger as HTMLButtonElement).click();
+		});
+		// Let the catalog request settle.
+		await act(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		});
+	}
+
+	beforeEach(() => {
+		fetchChatAgentModelsMock.mockReset();
+	});
+
+	it("reads the catalog from the workspace the card belongs to", async () => {
+		fetchChatAgentModelsMock.mockResolvedValue({ models: [], effortLevels: [], defaultModelId: null });
+
+		await renderChatAgentPicker({ agentId: "pi-chat" as RuntimeAgentId, workspaceId: "workspace-7" });
+
+		expect(fetchChatAgentModelsMock).toHaveBeenCalledWith("workspace-7", "pi-chat");
+	});
+
+	it("offers the effort levels the runtime reports, not a copy kept in the UI", async () => {
+		// `max` is the level a hand-maintained list dropped for pi-chat, so it is the one worth
+		// asserting: the vocabulary has to come from the response.
+		fetchChatAgentModelsMock.mockResolvedValue({
+			models: [{ id: "strata/qwen-flash", label: "qwen-flash", providerId: "strata" }],
+			effortLevels: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+			defaultModelId: "strata/qwen-flash",
+		});
+
+		await renderChatAgentPicker({ agentId: "pi-chat" as RuntimeAgentId });
+
+		const effortSelect = selectByAriaLabel("Reasoning effort override");
+		expect(effortSelect).not.toBeNull();
+		expect(optionValues(effortSelect as HTMLSelectElement)).toEqual([
+			"",
+			"off",
+			"minimal",
+			"low",
+			"medium",
+			"high",
+			"xhigh",
+			"max",
+		]);
+	});
+
+	it("names the model the agent would use anyway in the no-override entry", async () => {
+		fetchChatAgentModelsMock.mockResolvedValue({
+			models: [
+				{ id: "strata/qwen-flash", label: "qwen-flash", providerId: "strata" },
+				{ id: "strata/qwen-max", label: "qwen-max", providerId: "strata" },
+			],
+			effortLevels: ["low"],
+			defaultModelId: "strata/qwen-flash",
+		});
+
+		await renderChatAgentPicker({ agentId: "pi-chat" as RuntimeAgentId });
+
+		const modelSelect = selectByAriaLabel("Model override");
+		expect(modelSelect).not.toBeNull();
+		expect(optionLabels(modelSelect as HTMLSelectElement)[0]).toBe("Default (qwen-flash)");
+		// The default is represented by the empty value, so it is not repeated in the list.
+		expect(optionValues(modelSelect as HTMLSelectElement)).toEqual(["", "strata/qwen-max"]);
+	});
+
+	it("keeps a stored model the catalog no longer lists selectable", async () => {
+		fetchChatAgentModelsMock.mockResolvedValue({
+			models: [{ id: "strata/qwen-flash", label: "qwen-flash", providerId: "strata" }],
+			effortLevels: ["low"],
+			defaultModelId: null,
+		});
+
+		await renderChatAgentPicker({
+			agentId: "pi-chat" as RuntimeAgentId,
+			agentSettings: { modelId: "strata/retired-model" },
+		});
+
+		const modelSelect = selectByAriaLabel("Model override");
+		expect(modelSelect).not.toBeNull();
+		expect(optionValues(modelSelect as HTMLSelectElement)).toContain("strata/retired-model");
+		expect((modelSelect as HTMLSelectElement).value).toBe("strata/retired-model");
+	});
+
+	it("falls back to free text when the agent has no readable catalog", async () => {
+		fetchChatAgentModelsMock.mockRejectedValue(new Error("no config"));
+
+		await renderChatAgentPicker({ agentId: "codex-chat" as RuntimeAgentId });
+
+		expect(selectByAriaLabel("Model override")).toBeNull();
+		const modelInput = container.querySelector('input[aria-label="Model override"]');
+		expect(modelInput).not.toBeNull();
+	});
+
+	it("shows placeholders rather than free text while the catalog loads", async () => {
+		let resolveCatalog: (value: unknown) => void = () => {};
+		fetchChatAgentModelsMock.mockReturnValue(
+			new Promise((resolve) => {
+				resolveCatalog = resolve;
+			}),
+		);
+
+		await renderChatAgentPicker({ agentId: "pi-chat" as RuntimeAgentId });
+
+		// Both fields arrive from the same request, so neither may render as a text input that
+		// then swaps into a dropdown and drops whatever the user started typing.
+		const modelSelect = selectByAriaLabel("Model override");
+		const effortSelect = selectByAriaLabel("Reasoning effort override");
+		expect(modelSelect?.disabled).toBe(true);
+		expect(modelSelect?.textContent).toContain("Loading models...");
+		expect(effortSelect?.disabled).toBe(true);
+		expect(effortSelect?.textContent).toContain("Loading levels...");
+		expect(container.querySelector('input[aria-label="Model override"]')).toBeNull();
+
+		await act(async () => {
+			resolveCatalog({
+				models: [{ id: "strata/qwen-flash", label: "qwen-flash", providerId: "strata" }],
+				effortLevels: ["low", "max"],
+				defaultModelId: null,
+			});
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		});
+
+		expect(selectByAriaLabel("Model override")?.disabled).toBe(false);
+		expect(optionValues(selectByAriaLabel("Reasoning effort override") as HTMLSelectElement)).toEqual([
+			"",
+			"low",
+			"max",
+		]);
 	});
 });
