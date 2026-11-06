@@ -33,7 +33,8 @@
 			"!dist/**/*",
 			"!node_modules/**/*",
 			"!!**/node_modules",
-			"!.worktrees/**/*"
+			"!.worktrees/**/*",
+			"!.delta/**/*"
 		]
 	},
 	"plugins": ["grit/no-process-env-destructure.grit", "grit/no-home-agent-prefix-literal.grit"],
