@@ -111,7 +111,7 @@ function BreakdownList({ title, groups }: { title: string; groups: RuntimeProjec
 					No usage recorded yet.
 				</div>
 			) : (
-				<div className="flex flex-col gap-1.5 rounded-lg border border-border bg-surface-1 px-3 py-2.5">
+				<div className="flex flex-col gap-2.5 rounded-lg border border-border bg-surface-1 px-3 py-2.5">
 					<div className="flex items-center gap-2 text-[10px] text-text-tertiary">
 						<span className="min-w-0 flex-1" />
 						{TOKEN_KINDS.map((kind) => (
@@ -123,10 +123,9 @@ function BreakdownList({ title, groups }: { title: string; groups: RuntimeProjec
 					</div>
 					{groups.map((group) => (
 						<div key={group.key} className="flex flex-col gap-1">
+							<span className="break-all text-xs text-text-primary">{group.label}</span>
 							<div className="flex items-center gap-2 text-xs">
-								<span className="min-w-0 flex-1 truncate text-text-primary" title={group.label}>
-									{group.label}
-								</span>
+								<span className="min-w-0 flex-1" />
 								{TOKEN_KINDS.map((kind) => (
 									<span
 										key={kind.key}
