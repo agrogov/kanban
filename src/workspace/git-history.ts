@@ -5,7 +5,8 @@ import type {
 	RuntimeGitRef,
 	RuntimeGitRefsResponse,
 } from "../core/api-contract";
-import { requireSafeGitArgument, runGit } from "./git-utils";
+import { requireSafeGitArgument } from "../core/git-argument-safety";
+import { runGit } from "./git-utils";
 
 const LOG_FIELD_SEPARATOR = "\x1f";
 const LOG_RECORD_SEPARATOR = "\x1e";

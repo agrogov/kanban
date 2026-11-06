@@ -7,6 +7,7 @@ import type {
 	RuntimeWorktreeDeleteResponse,
 	RuntimeWorktreeEnsureResponse,
 } from "../core/api-contract";
+import { isSafeGitArgument } from "../core/git-argument-safety";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system";
 import { getRuntimeHomePath, getTaskWorktreesHomePath, loadWorkspaceContext } from "../state/workspace-state";
 import { getGitCommandErrorMessage, getGitStdout, readGitHeadInfo, runGit } from "./git-utils";
@@ -588,6 +589,15 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 					error: "Task base branch is required for worktree creation.",
 				};
 			}
+			if (!isSafeGitArgument(requestedBaseRef)) {
+				return {
+					ok: false,
+					path: null,
+					baseRef: requestedBaseRef,
+					baseCommit: null,
+					error: "Task base branch cannot be used as a git revision.",
+				};
+			}
 
 			const baseRefResult = await runGit(context.repoPath, [
 				"rev-parse",
@@ -737,6 +747,9 @@ export async function resolveTaskCwd(options: {
 	const normalizedBaseRef = options.baseRef.trim();
 	if (!normalizedBaseRef) {
 		throw new Error("Task base branch is required for task workspace resolution.");
+	}
+	if (!isSafeGitArgument(normalizedBaseRef)) {
+		throw new Error("Task base branch cannot be used as a git revision.");
 	}
 
 	if (options.ensure) {

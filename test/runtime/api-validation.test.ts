@@ -4,6 +4,7 @@ import {
 	parseHookIngestRequest,
 	parseTaskSessionStartRequest,
 	parseWorkspaceFileSearchRequest,
+	parseWorktreeEnsureRequest,
 } from "../../src/core/api-validation";
 
 describe("parseWorkspaceFileSearchRequest", () => {
@@ -87,6 +88,30 @@ describe("parseTaskSessionStartRequest", () => {
 			baseRef: "main",
 			resumeFromTrash: true,
 		});
+	});
+
+	it("rejects baseRef values that git would parse as options", () => {
+		expect(() =>
+			parseTaskSessionStartRequest({
+				taskId: "task-1",
+				prompt: "",
+				baseRef: "--output=/tmp/pwned",
+			}),
+		).toThrow(/git revision/);
+	});
+});
+
+describe("parseWorktreeEnsureRequest", () => {
+	it("accepts a normal baseRef", () => {
+		expect(parseWorktreeEnsureRequest({ taskId: "task-1", baseRef: "origin/main" })).toEqual({
+			taskId: "task-1",
+			baseRef: "origin/main",
+		});
+	});
+
+	it("rejects leading-dash and NUL baseRef values", () => {
+		expect(() => parseWorktreeEnsureRequest({ taskId: "task-1", baseRef: "-f" })).toThrow();
+		expect(() => parseWorktreeEnsureRequest({ taskId: "task-1", baseRef: "main\0tail" })).toThrow();
 	});
 });
 

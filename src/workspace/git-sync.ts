@@ -8,7 +8,8 @@ import type {
 	RuntimeGitSyncResponse,
 	RuntimeGitSyncSummary,
 } from "../core/api-contract";
-import { isSafeGitArgument, runGit } from "./git-utils";
+import { isSafeGitArgument } from "../core/git-argument-safety";
+import { runGit } from "./git-utils";
 
 interface GitPathFingerprint {
 	path: string;

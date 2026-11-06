@@ -1,5 +1,4 @@
 import { z } from "zod";
-
 import {
 	type RuntimeClineAccountSwitchRequest,
 	type RuntimeClineAddProviderRequest,
@@ -66,6 +65,7 @@ import {
 	runtimeWorktreeDeleteRequestSchema,
 	runtimeWorktreeEnsureRequestSchema,
 } from "./api-contract";
+import { isSafeGitArgument } from "./git-argument-safety";
 
 const trimmedStringSchema = z.string().transform((value) => value.trim());
 const positiveIntegerFromQuerySchema = z.coerce.number().int().positive();
@@ -89,6 +89,9 @@ export function parseWorkspaceChangesRequest(query: URLSearchParams): RuntimeWor
 		requiredTrimmedStringSchema("Missing baseRef query parameter."),
 		query.get("baseRef") ?? "",
 	);
+	if (!isSafeGitArgument(baseRef)) {
+		throw new Error("Invalid baseRef query parameter.");
+	}
 	return parseWithSchema(runtimeWorkspaceChangesRequestSchema, { taskId, baseRef });
 }
 
@@ -101,6 +104,9 @@ export function parseTaskWorkspaceInfoRequest(query: URLSearchParams): RuntimeTa
 		requiredTrimmedStringSchema("Missing baseRef query parameter."),
 		query.get("baseRef") ?? "",
 	);
+	if (!isSafeGitArgument(baseRef)) {
+		throw new Error("Invalid baseRef query parameter.");
+	}
 	return parseWithSchema(runtimeTaskWorkspaceInfoRequestSchema, { taskId, baseRef });
 }
 
@@ -155,6 +161,9 @@ export function parseWorktreeEnsureRequest(value: unknown): RuntimeWorktreeEnsur
 	}
 	const baseRef = parsed.baseRef.trim();
 	if (!baseRef) {
+		throw new Error("Invalid worktree ensure payload.");
+	}
+	if (!isSafeGitArgument(baseRef)) {
 		throw new Error("Invalid worktree ensure payload.");
 	}
 	return {
@@ -227,6 +236,9 @@ export function parseTaskSessionStartRequest(value: unknown): RuntimeTaskSession
 	const baseRef = parsed.baseRef.trim();
 	if (!baseRef) {
 		throw new Error("Task session baseRef cannot be empty.");
+	}
+	if (!isSafeGitArgument(baseRef)) {
+		throw new Error("Task session baseRef cannot be used as a git revision.");
 	}
 	return {
 		...parsed,
@@ -551,6 +563,9 @@ export function parseShellSessionStartRequest(value: unknown): RuntimeShellSessi
 	const baseRef = parsed.baseRef.trim();
 	if (!baseRef) {
 		throw new Error("Shell session baseRef cannot be empty.");
+	}
+	if (!isSafeGitArgument(baseRef)) {
+		throw new Error("Shell session baseRef cannot be used as a git revision.");
 	}
 	return {
 		...parsed,
