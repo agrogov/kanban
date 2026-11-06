@@ -1,6 +1,6 @@
 // Per-project Statistics view: AI usage (from the workspace usage ledger) plus board-flow
 // metrics (from the current board). Opened from the top bar chart button.
-import { RefreshCw, X } from "lucide-react";
+import { Info, RefreshCw, X } from "lucide-react";
 import { useMemo } from "react";
 
 import { StatsBarChart } from "@/components/project-stats/stats-bar-chart";
@@ -8,7 +8,12 @@ import type { UseProjectStatsDataResult } from "@/components/project-stats/use-p
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
-import type { RuntimeProjectStatsRangeDays, RuntimeProjectStatsUsageGroup } from "@/runtime/types";
+import { Tooltip } from "@/components/ui/tooltip";
+import type {
+	RuntimeProjectStatsRangeDays,
+	RuntimeProjectStatsUsageDay,
+	RuntimeProjectStatsUsageGroup,
+} from "@/runtime/types";
 import { formatCompactTokens, formatCostUsd, formatDurationMs, formatPercent } from "@/utils/stats-format";
 
 const RANGE_OPTIONS: Array<{ days: RuntimeProjectStatsRangeDays; label: string }> = [
@@ -18,13 +23,33 @@ const RANGE_OPTIONS: Array<{ days: RuntimeProjectStatsRangeDays; label: string }
 	{ days: 0, label: "All" },
 ];
 
-function StatsCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function StatsCard({
+	label,
+	value,
+	hint,
+	tooltip,
+}: {
+	label: string;
+	value: string;
+	hint?: string;
+	tooltip?: React.ReactNode;
+}) {
 	return (
-		<div className="flex min-w-[110px] flex-1 flex-col gap-0.5 rounded-lg border border-border bg-surface-1 px-3 py-2.5">
-			<span className="text-[10px] uppercase tracking-wide text-text-tertiary">{label}</span>
-			<span className="text-lg font-medium text-text-primary tabular-nums leading-tight">{value}</span>
-			{hint ? <span className="text-[10px] text-text-tertiary">{hint}</span> : null}
-		</div>
+		<Tooltip content={tooltip}>
+			<div
+				className={cn(
+					"flex min-w-[110px] flex-1 flex-col gap-0.5 rounded-lg border border-border bg-surface-1 px-3 py-2.5",
+					tooltip ? "cursor-help" : undefined,
+				)}
+			>
+				<span className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-text-tertiary">
+					{label}
+					{tooltip ? <Info size={10} aria-hidden className="shrink-0" /> : null}
+				</span>
+				<span className="text-lg font-medium text-text-primary tabular-nums leading-tight">{value}</span>
+				{hint ? <span className="text-[10px] text-text-tertiary">{hint}</span> : null}
+			</div>
+		</Tooltip>
 	);
 }
 
@@ -79,6 +104,17 @@ export function ProjectStatsView({
 	const usage = data?.usage ?? null;
 	const flow = data?.flow ?? null;
 	const dailyLabels = useMemo(() => (data ? data.flow.daily.map((day) => day.date) : []), [data]);
+	// Usage and flow build their own daily buckets; pair the usage series to the chart labels by
+	// date key instead of assuming the two arrays stay index-aligned.
+	const usageDailyByDate = useMemo(() => {
+		const map = new Map<string, RuntimeProjectStatsUsageDay>();
+		if (usage) {
+			for (const day of usage.daily) {
+				map.set(day.date, day);
+			}
+		}
+		return map;
+	}, [usage]);
 	const hasUsageData = Boolean(usage && usage.totals.totalTokens > 0);
 	return (
 		<div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface-0">
@@ -170,25 +206,27 @@ export function ProjectStatsView({
 												key: "input",
 												label: "Input",
 												colorClass: "bg-status-blue",
-												values: usage.daily.map((day) => day.inputTokens),
+												values: dailyLabels.map((date) => usageDailyByDate.get(date)?.inputTokens ?? 0),
 											},
 											{
 												key: "cache-read",
 												label: "Cache read",
 												colorClass: "bg-status-green",
-												values: usage.daily.map((day) => day.cacheReadTokens),
+												values: dailyLabels.map((date) => usageDailyByDate.get(date)?.cacheReadTokens ?? 0),
 											},
 											{
 												key: "cache-write",
 												label: "Cache write",
 												colorClass: "bg-status-gold",
-												values: usage.daily.map((day) => day.cacheWriteTokens),
+												values: dailyLabels.map(
+													(date) => usageDailyByDate.get(date)?.cacheWriteTokens ?? 0,
+												),
 											},
 											{
 												key: "output",
 												label: "Output",
 												colorClass: "bg-status-purple",
-												values: usage.daily.map((day) => day.outputTokens),
+												values: dailyLabels.map((date) => usageDailyByDate.get(date)?.outputTokens ?? 0),
 											},
 										]}
 									/>
@@ -204,7 +242,11 @@ export function ProjectStatsView({
 						<div className="h-px bg-border" />
 						<div className="flex flex-wrap gap-2">
 							<StatsCard label="Created" value={String(flow?.totals.created ?? 0)} />
-							<StatsCard label="Completed" value={String(flow?.totals.completed ?? 0)} />
+							<StatsCard
+								label="Completed"
+								value={String(flow?.totals.completed ?? 0)}
+								tooltip="Counts every card in the Done/trash column, including cards discarded before done. Cycle time is measured from card creation to its last update (updatedAt)."
+							/>
 							<StatsCard
 								label="In flight"
 								value={String(flow?.totals.wip ?? 0)}

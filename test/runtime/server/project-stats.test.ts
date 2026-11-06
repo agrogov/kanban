@@ -93,6 +93,39 @@ describe("loadProjectStats", () => {
 		expect(stats.usage.byModel).toHaveLength(2);
 	});
 
+	it("rolls truncated breakdown groups into an Other row that reconciles with totals", async () => {
+		// Ten agents with distinct token totals; only the top 8 are listed and the rest merge into "Other".
+		const rows = Array.from({ length: 10 }, (_, index) =>
+			row({
+				taskId: `t${index}`,
+				agentId: `agent-${index}`,
+				inputTokens: (index + 1) * 100,
+				outputTokens: 0,
+				cacheReadTokens: 0,
+				cacheWriteTokens: 0,
+				turns: index + 1,
+			}),
+		);
+		const stats = await loadProjectStats("ws", 7, {
+			now: () => NOW,
+			readRows: async () => rows,
+			loadWorkspaceState: async () => workspaceState(boardWith([])),
+		});
+		expect(stats.usage.byAgent).toHaveLength(9);
+		const other = stats.usage.byAgent[8];
+		expect(other.key).toBe("other");
+		expect(other.label).toBe("Other");
+		// The two smallest groups (100 + 200 tokens) fall out of the top-8 cut.
+		expect(other.totalTokens).toBe(300);
+		expect(other.turns).toBe(3);
+		expect(other.taskCount).toBe(2);
+		// Breakdown sums reconcile with the section totals.
+		expect(stats.usage.byAgent.reduce((sum, group) => sum + group.totalTokens, 0)).toBe(
+			stats.usage.totals.totalTokens,
+		);
+		expect(stats.usage.byAgent.reduce((sum, group) => sum + group.turns, 0)).toBe(stats.usage.totals.turns);
+	});
+
 	it("derives flow metrics from the current board", async () => {
 		const board = boardWith([
 			{ id: "backlog", cards: [{ id: "b1", createdAt: NOW - DAY, updatedAt: NOW }] },

@@ -129,10 +129,10 @@ function percentile(sortedValues: number[], fraction: number): number | null {
 	return sortedValues[index];
 }
 
-function buildGroup(key: string, acc: Accumulator, taskIds: Set<string>): RuntimeProjectStatsUsageGroup {
+function buildGroup(key: string, label: string, acc: Accumulator, taskIds: Set<string>): RuntimeProjectStatsUsageGroup {
 	return {
 		key,
-		label: key,
+		label,
 		totalTokens: totalTokens(acc),
 		inputTokens: acc.inputTokens,
 		outputTokens: acc.outputTokens,
@@ -142,14 +142,44 @@ function buildGroup(key: string, acc: Accumulator, taskIds: Set<string>): Runtim
 	};
 }
 
+function addAccumulator(target: Accumulator, source: Accumulator): void {
+	target.inputTokens += source.inputTokens;
+	target.outputTokens += source.outputTokens;
+	target.cacheReadTokens += source.cacheReadTokens;
+	target.cacheWriteTokens += source.cacheWriteTokens;
+	target.turns += source.turns;
+	target.costUsd += source.costUsd;
+	if (source.hasCost) {
+		target.hasCost = true;
+	}
+}
+
+const OTHER_GROUP_KEY = "other";
+const OTHER_GROUP_LABEL = "Other";
+
 function topGroups(
 	groups: Map<string, { acc: Accumulator; taskIds: Set<string> }>,
 	limit: number,
 ): RuntimeProjectStatsUsageGroup[] {
-	return Array.from(groups.entries())
-		.map(([key, entry]) => buildGroup(key, entry.acc, entry.taskIds))
-		.sort((left, right) => right.totalTokens - left.totalTokens)
-		.slice(0, limit);
+	const sorted = Array.from(groups.entries())
+		.map(([key, entry]) => ({ key, acc: entry.acc, taskIds: entry.taskIds }))
+		.sort((left, right) => totalTokens(right.acc) - totalTokens(left.acc));
+	const top = sorted.slice(0, limit).map((entry) => buildGroup(entry.key, entry.key, entry.acc, entry.taskIds));
+	const overflow = sorted.slice(limit);
+	if (overflow.length === 0) {
+		return top;
+	}
+	// Roll the truncated remainder into an "Other" row so breakdown sums reconcile with totals.
+	const merged = createAccumulator();
+	const mergedTaskIds = new Set<string>();
+	for (const entry of overflow) {
+		addAccumulator(merged, entry.acc);
+		for (const taskId of entry.taskIds) {
+			mergedTaskIds.add(taskId);
+		}
+	}
+	top.push(buildGroup(OTHER_GROUP_KEY, OTHER_GROUP_LABEL, merged, mergedTaskIds));
+	return top;
 }
 
 function daySeriesRange(rangeDays: RuntimeProjectStatsRangeDays, rows: UsageLedgerRow[], now: number): string[] {
