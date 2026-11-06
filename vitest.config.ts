@@ -18,6 +18,10 @@ export default defineConfig({
 			"**/node_modules/**",
 			"**/dist/**",
 			".worktrees/**",
+			// Agent-managed worktree checkouts of this same repo. They carry their own copy of
+			// every test file, so including them runs the integration suite several times in
+			// parallel against shared state and the copies fail on interference.
+			".delta/**",
 		],
 		testTimeout: 15_000,
 	},
