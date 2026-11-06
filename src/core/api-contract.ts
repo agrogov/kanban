@@ -1420,6 +1420,8 @@ export const runtimeProjectStatsUsageGroupSchema = z.object({
 	totalTokens: z.number().int().nonnegative(),
 	inputTokens: z.number().int().nonnegative(),
 	outputTokens: z.number().int().nonnegative(),
+	cacheReadTokens: z.number().int().nonnegative(),
+	cacheWriteTokens: z.number().int().nonnegative(),
 	costUsd: z.number().nonnegative().nullable(),
 	turns: z.number().int().nonnegative(),
 	taskCount: z.number().int().nonnegative(),

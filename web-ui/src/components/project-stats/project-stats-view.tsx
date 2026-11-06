@@ -1,7 +1,7 @@
 // Per-project Statistics view: AI usage (from the workspace usage ledger) plus board-flow
 // metrics (from the current board). Opened from the top bar chart button.
 import { Info, RefreshCw, X } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { StatsBarChart } from "@/components/project-stats/stats-bar-chart";
 import type { UseProjectStatsDataResult } from "@/components/project-stats/use-project-stats-data";
@@ -58,8 +58,47 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 	return <h3 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">{children}</h3>;
 }
 
+const TOKEN_KINDS = [
+	{ key: "input", label: "Input", colorClass: "bg-status-blue" },
+	{ key: "cacheRead", label: "Cache read", colorClass: "bg-status-green" },
+	{ key: "cacheWrite", label: "Cache write", colorClass: "bg-status-gold" },
+	{ key: "output", label: "Output", colorClass: "bg-status-purple" },
+] as const;
+
+type TokenKind = (typeof TOKEN_KINDS)[number]["key"];
+
+function groupTokens(group: RuntimeProjectStatsUsageGroup, kind: TokenKind): number {
+	switch (kind) {
+		case "input":
+			return group.inputTokens;
+		case "cacheRead":
+			return group.cacheReadTokens;
+		case "cacheWrite":
+			return group.cacheWriteTokens;
+		case "output":
+			return group.outputTokens;
+	}
+}
+
+function dayTokens(day: RuntimeProjectStatsUsageDay | undefined, kind: TokenKind): number {
+	if (!day) {
+		return 0;
+	}
+	switch (kind) {
+		case "input":
+			return day.inputTokens;
+		case "cacheRead":
+			return day.cacheReadTokens;
+		case "cacheWrite":
+			return day.cacheWriteTokens;
+		case "output":
+			return day.outputTokens;
+	}
+}
+
+// Token kinds are never summed into one number: cache reads dwarf everything else and mean
+// something different from fresh input or generated output.
 function BreakdownList({ title, groups }: { title: string; groups: RuntimeProjectStatsUsageGroup[] }) {
-	const max = Math.max(1, ...groups.map((group) => group.totalTokens));
 	return (
 		<div className="flex flex-col gap-2">
 			<SectionTitle>{title}</SectionTitle>
@@ -69,22 +108,27 @@ function BreakdownList({ title, groups }: { title: string; groups: RuntimeProjec
 				</div>
 			) : (
 				<div className="flex flex-col gap-1.5 rounded-lg border border-border bg-surface-1 px-3 py-2.5">
+					<div className="flex items-center gap-2 text-[10px] text-text-tertiary">
+						<span className="min-w-0 flex-1" />
+						{TOKEN_KINDS.map((kind) => (
+							<span key={kind.key} className="w-[52px] shrink-0 text-right">
+								{kind.label}
+							</span>
+						))}
+						<span className="w-[58px] shrink-0 text-right">Cost</span>
+					</div>
 					{groups.map((group) => (
 						<div key={group.key} className="flex items-center gap-2 text-xs">
-							<span className="w-[130px] shrink-0 truncate text-text-primary" title={group.label}>
+							<span className="min-w-0 flex-1 truncate text-text-primary" title={group.label}>
 								{group.label}
 							</span>
-							<div className="h-2 min-w-4 flex-1 overflow-hidden rounded-sm bg-surface-3">
-								<div
-									className="h-full rounded-sm bg-accent"
-									style={{ width: `${Math.max(2, (group.totalTokens / max) * 100)}%` }}
-								/>
-							</div>
-							<span className="w-[52px] shrink-0 text-right tabular-nums text-text-secondary">
-								{formatCompactTokens(group.totalTokens)}
-							</span>
+							{TOKEN_KINDS.map((kind) => (
+								<span key={kind.key} className="w-[52px] shrink-0 text-right tabular-nums text-text-secondary">
+									{formatCompactTokens(groupTokens(group, kind.key))}
+								</span>
+							))}
 							<span className="w-[58px] shrink-0 text-right tabular-nums text-text-tertiary">
-								{group.costUsd !== null ? formatCostUsd(group.costUsd) : ""}
+								{group.costUsd !== null ? formatCostUsd(group.costUsd) : "—"}
 							</span>
 						</div>
 					))}
@@ -116,6 +160,8 @@ export function ProjectStatsView({
 		}
 		return map;
 	}, [usage]);
+	const [tokenKindKey, setTokenKindKey] = useState<TokenKind>("input");
+	const tokenKind = TOKEN_KINDS.find((kind) => kind.key === tokenKindKey) ?? TOKEN_KINDS[0];
 	const bucketUnit = rangeDays === 1 ? "hour" : "day";
 	const hasUsageData = Boolean(usage && usage.totals.totalTokens > 0);
 	return (
@@ -178,14 +224,29 @@ export function ProjectStatsView({
 						) : null}
 						<div className="flex flex-wrap gap-2">
 							<StatsCard
-								label="Total tokens"
-								value={formatCompactTokens(usage?.totals.totalTokens ?? 0)}
-								hint={`${usage?.totals.taskCount ?? 0} tasks`}
+								label="Input"
+								value={formatCompactTokens(usage?.totals.inputTokens ?? 0)}
+								hint="tokens"
+							/>
+							<StatsCard
+								label="Cache read"
+								value={formatCompactTokens(usage?.totals.cacheReadTokens ?? 0)}
+								hint="tokens"
+							/>
+							<StatsCard
+								label="Cache write"
+								value={formatCompactTokens(usage?.totals.cacheWriteTokens ?? 0)}
+								hint="tokens"
+							/>
+							<StatsCard
+								label="Output"
+								value={formatCompactTokens(usage?.totals.outputTokens ?? 0)}
+								hint="tokens"
 							/>
 							<StatsCard
 								label="Cost"
 								value={usage?.totals.costUsd != null ? formatCostUsd(usage.totals.costUsd) : "—"}
-								hint="only where reported"
+								hint="not reported by every agent"
 							/>
 							<StatsCard
 								label="Cache hit"
@@ -196,7 +257,26 @@ export function ProjectStatsView({
 							<StatsCard label="Tool steps" value={String(usage?.totals.steps ?? 0)} />
 						</div>
 						<div className="flex flex-col gap-2">
-							<SectionTitle>Tokens per {bucketUnit}</SectionTitle>
+							<div className="flex items-center gap-3">
+								<SectionTitle>Tokens per {bucketUnit}</SectionTitle>
+								<div className="flex items-center gap-0.5 rounded-md bg-surface-2 p-0.5">
+									{TOKEN_KINDS.map((kind) => (
+										<button
+											key={kind.key}
+											type="button"
+											onClick={() => setTokenKindKey(kind.key)}
+											className={cn(
+												"rounded px-2 py-0.5 text-xs",
+												tokenKind.key === kind.key
+													? "bg-surface-4 text-text-primary"
+													: "text-text-secondary hover:bg-surface-3 hover:text-text-primary",
+											)}
+										>
+											{kind.label}
+										</button>
+									))}
+								</div>
+							</div>
 							<div className="rounded-lg border border-border bg-surface-1 p-3">
 								{usage && dailyLabels.length > 0 ? (
 									<StatsBarChart
@@ -205,30 +285,12 @@ export function ProjectStatsView({
 										formatValue={(value) => `${formatCompactTokens(value)} tok`}
 										series={[
 											{
-												key: "input",
-												label: "Input",
-												colorClass: "bg-status-blue",
-												values: dailyLabels.map((date) => usageDailyByDate.get(date)?.inputTokens ?? 0),
-											},
-											{
-												key: "cache-read",
-												label: "Cache read",
-												colorClass: "bg-status-green",
-												values: dailyLabels.map((date) => usageDailyByDate.get(date)?.cacheReadTokens ?? 0),
-											},
-											{
-												key: "cache-write",
-												label: "Cache write",
-												colorClass: "bg-status-gold",
-												values: dailyLabels.map(
-													(date) => usageDailyByDate.get(date)?.cacheWriteTokens ?? 0,
+												key: tokenKind.key,
+												label: tokenKind.label,
+												colorClass: tokenKind.colorClass,
+												values: dailyLabels.map((date) =>
+													dayTokens(usageDailyByDate.get(date), tokenKind.key),
 												),
-											},
-											{
-												key: "output",
-												label: "Output",
-												colorClass: "bg-status-purple",
-												values: dailyLabels.map((date) => usageDailyByDate.get(date)?.outputTokens ?? 0),
 											},
 										]}
 									/>

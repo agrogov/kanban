@@ -95,6 +95,8 @@ function buildGroup(key: string, label: string, acc: Accumulator, taskIds: Set<s
 		totalTokens: totalTokens(acc),
 		inputTokens: acc.inputTokens,
 		outputTokens: acc.outputTokens,
+		cacheReadTokens: acc.cacheReadTokens,
+		cacheWriteTokens: acc.cacheWriteTokens,
 		costUsd: acc.hasCost ? acc.costUsd : null,
 		turns: acc.turns,
 		taskCount: taskIds.size,

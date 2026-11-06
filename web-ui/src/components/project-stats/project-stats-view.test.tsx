@@ -51,6 +51,8 @@ function statsResponse(overrides: Partial<RuntimeProjectStatsResponse> = {}): Ru
 					totalTokens: 116,
 					inputTokens: 10,
 					outputTokens: 5,
+					cacheReadTokens: 100,
+					cacheWriteTokens: 1,
 					costUsd: 0.12,
 					turns: 3,
 					taskCount: 2,
@@ -108,7 +110,7 @@ describe("ProjectStatsView", () => {
 			root.render(<ProjectStatsView stats={hookResult(statsResponse())} onClose={vi.fn()} />);
 		});
 		const text = container.textContent ?? "";
-		expect(text).toContain("Total tokens");
+		expect(text).toContain("Cache read");
 		expect(text).toContain("116");
 		expect(text).toContain("48%");
 		expect(text).toContain("$0.120");
