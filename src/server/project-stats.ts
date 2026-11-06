@@ -1,8 +1,9 @@
 // Server-side aggregation for the per-project Statistics view.
 // Token/cost history comes from the workspace usage ledger (usage.jsonl), which only has
 // data from the moment the feature shipped; board-flow stats are derived from the current
-// board so they already cover pre-existing tasks.
-import { readFile } from "node:fs/promises";
+// board so they already cover pre-existing tasks. Ledger parsing and size-bounded
+// compaction live in usage-ledger.ts; compaction is a lossless fold, so aggregates here
+// are identical before and after it.
 import type { RuntimeWorkspaceStateResponse } from "../core/api-contract";
 import {
 	type RuntimeProjectStatsFlowDay,
@@ -14,7 +15,11 @@ import {
 } from "../core/api-contract";
 import { isLiveTaskSessionSummary } from "../core/task-session-state";
 import { getWorkspaceUsagePath, loadWorkspaceStateById } from "../state/workspace-state";
-import type { UsageLedgerRow } from "./usage-recorder";
+import { dateKey, readUsageLedgerRows, type UsageLedgerRow } from "./usage-ledger";
+
+// `dateKey` is owned by usage-ledger.ts (compaction groups by it); re-exported here for
+// existing callers that key stats output by day.
+export { dateKey };
 
 interface Accumulator {
 	inputTokens: number;
@@ -50,13 +55,6 @@ function addRow(accumulator: Accumulator, row: UsageLedgerRow): void {
 	}
 }
 
-export function dateKey(ts: number): string {
-	const date = new Date(ts);
-	const month = String(date.getMonth() + 1).padStart(2, "0");
-	const day = String(date.getDate()).padStart(2, "0");
-	return `${date.getFullYear()}-${month}-${day}`;
-}
-
 function startOfDay(ts: number): number {
 	const date = new Date(ts);
 	date.setHours(0, 0, 0, 0);
@@ -76,49 +74,10 @@ function totalTokens(acc: Accumulator): number {
 	return acc.inputTokens + acc.outputTokens + acc.cacheReadTokens + acc.cacheWriteTokens;
 }
 
-function parseLedgerRows(raw: string): UsageLedgerRow[] {
-	const rows: UsageLedgerRow[] = [];
-	for (const line of raw.split("\n")) {
-		const trimmed = line.trim();
-		if (!trimmed) {
-			continue;
-		}
-		try {
-			const parsed = JSON.parse(trimmed) as Partial<UsageLedgerRow>;
-			if (
-				typeof parsed.ts === "number" &&
-				typeof parsed.taskId === "string" &&
-				typeof parsed.inputTokens === "number" &&
-				typeof parsed.outputTokens === "number"
-			) {
-				rows.push({
-					ts: parsed.ts,
-					taskId: parsed.taskId,
-					agentId: typeof parsed.agentId === "string" ? parsed.agentId : null,
-					modelId: typeof parsed.modelId === "string" ? parsed.modelId : null,
-					inputTokens: parsed.inputTokens,
-					outputTokens: parsed.outputTokens,
-					cacheReadTokens: typeof parsed.cacheReadTokens === "number" ? parsed.cacheReadTokens : 0,
-					cacheWriteTokens: typeof parsed.cacheWriteTokens === "number" ? parsed.cacheWriteTokens : 0,
-					costUsd: typeof parsed.costUsd === "number" ? parsed.costUsd : null,
-					turns: typeof parsed.turns === "number" ? parsed.turns : 0,
-					steps: typeof parsed.steps === "number" ? parsed.steps : 0,
-				});
-			}
-		} catch {
-			// Skip corrupt lines: a partially written append must not blank the whole report.
-		}
-	}
-	return rows;
-}
-
 async function readUsageRows(workspaceId: string): Promise<UsageLedgerRow[]> {
-	try {
-		const raw = await readFile(getWorkspaceUsagePath(workspaceId), "utf8");
-		return parseLedgerRows(raw);
-	} catch {
-		return [];
-	}
+	// Oversized ledgers are compacted here (older per-session rows rolled into
+	// per-day aggregates) before parsing, keeping read cost bounded.
+	return await readUsageLedgerRows(getWorkspaceUsagePath(workspaceId));
 }
 
 function percentile(sortedValues: number[], fraction: number): number | null {

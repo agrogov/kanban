@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { RuntimeBoardData, RuntimeWorkspaceStateResponse } from "../../../src/core/api-contract";
 import { loadProjectStats } from "../../../src/server/project-stats";
+import { compactLedgerRows } from "../../../src/server/usage-ledger";
 import type { UsageLedgerRow } from "../../../src/server/usage-recorder";
 
 const NOW = new Date(2026, 10, 6, 12, 0, 0).getTime();
@@ -247,5 +248,70 @@ describe("loadProjectStats", () => {
 				expect(stats.flow.totals.created).toBe(1);
 			});
 		});
+	});
+
+	it("returns byte-identical stats before and after ledger compaction", async () => {
+		const rows: UsageLedgerRow[] = [];
+		for (let day = 1; day <= 45; day++) {
+			for (let task = 0; task < 3; task++) {
+				for (let turn = 0; turn < 4; turn++) {
+					rows.push(
+						row({
+							ts: NOW - day * DAY - turn * 40 * 60 * 1000,
+							taskId: `t${task}`,
+							agentId: ["codex-chat", "claude-chat", "pi-chat"][task],
+							modelId: task % 2 === 0 ? "gpt-5" : "sonnet",
+							inputTokens: 100 + day + turn,
+							outputTokens: 50 + task,
+							cacheReadTokens: 400 + day,
+							costUsd: day % 4 === 0 ? day + turn : null,
+							turns: 1,
+							steps: 2,
+						}),
+					);
+				}
+			}
+		}
+		const compacted = compactLedgerRows(rows, NOW);
+		expect(compacted.length).toBeLessThan(rows.length);
+		const state = workspaceState(boardWith([]));
+		const [before, after] = await Promise.all([
+			loadProjectStats("ws", 0, {
+				now: () => NOW,
+				readRows: async () => rows,
+				loadWorkspaceState: async () => state,
+			}),
+			loadProjectStats("ws", 0, {
+				now: () => NOW,
+				readRows: async () => compacted,
+				loadWorkspaceState: async () => state,
+			}),
+		]);
+		// Compare breakdowns by key: top-N sorting is by token volume, and row order (and
+		// therefore tie order) legitimately changes after compaction.
+		const byKey = <T extends { key: string }>(groups: T[]) => [...groups].sort((l, r) => l.key.localeCompare(r.key));
+		// Totals, daily buckets, and agent/model breakdowns survive compaction unchanged.
+		expect(after.usage.totals).toEqual(before.usage.totals);
+		expect(after.usage.daily).toEqual(before.usage.daily);
+		expect(byKey(after.usage.byAgent)).toEqual(byKey(before.usage.byAgent));
+		expect(byKey(after.usage.byModel)).toEqual(byKey(before.usage.byModel));
+		expect(after.usage.cacheHitPercent).toBe(before.usage.cacheHitPercent);
+		// The 30-day view is identical too, proving day-grouped aggregates window correctly.
+		const [before30, after30] = await Promise.all([
+			loadProjectStats("ws", 30, {
+				now: () => NOW,
+				readRows: async () => rows,
+				loadWorkspaceState: async () => state,
+			}),
+			loadProjectStats("ws", 30, {
+				now: () => NOW,
+				readRows: async () => compacted,
+				loadWorkspaceState: async () => state,
+			}),
+		]);
+		expect(after30.usage.totals).toEqual(before30.usage.totals);
+		expect(after30.usage.daily).toEqual(before30.usage.daily);
+		expect(byKey(after30.usage.byAgent)).toEqual(byKey(before30.usage.byAgent));
+		expect(byKey(after30.usage.byModel)).toEqual(byKey(before30.usage.byModel));
 	});
 });

@@ -2,25 +2,13 @@
 // usage ledger (usage.jsonl). Cumulative usage from the session summary is diffed against
 // the last seen cumulative value per (taskId, startedAt) run, so a row is written only for
 // work done since the previous observation and restarts never double count.
-import { appendFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+// Baselines are purely in-memory (seeded from live summaries at track time), so ledger
+// compaction in usage-ledger.ts never affects what this recorder writes.
 import type { RuntimeTaskSessionSummary } from "../core/api-contract";
 import { getWorkspaceUsagePath } from "../state/workspace-state";
+import { appendUsageLedgerRow, type UsageLedgerRow } from "./usage-ledger";
 
-export interface UsageLedgerRow {
-	/** Epoch ms when the delta was observed. */
-	ts: number;
-	taskId: string;
-	agentId: string | null;
-	modelId: string | null;
-	inputTokens: number;
-	outputTokens: number;
-	cacheReadTokens: number;
-	cacheWriteTokens: number;
-	costUsd: number | null;
-	turns: number;
-	steps: number;
-}
+export type { UsageLedgerRow };
 
 interface RunBaseline {
 	startedAt: number | null;
@@ -48,7 +36,7 @@ export interface UsageRecorder {
 
 export function createUsageRecorder(
 	workspaceId: string,
-	appendRow: (path: string, row: UsageLedgerRow) => Promise<void> = appendLedgerRow,
+	appendRow: (path: string, row: UsageLedgerRow) => Promise<void> = appendUsageLedgerRow,
 ): UsageRecorder {
 	const baselines = new Map<string, RunBaseline>();
 	let queue: Promise<void> = Promise.resolve();
@@ -136,9 +124,4 @@ function nullBaseline(startedAt: number | null): RunBaseline {
 		turns: 0,
 		steps: 0,
 	};
-}
-
-async function appendLedgerRow(path: string, row: UsageLedgerRow): Promise<void> {
-	await mkdir(dirname(path), { recursive: true });
-	await appendFile(path, `${JSON.stringify(row)}\n`, "utf8");
 }
