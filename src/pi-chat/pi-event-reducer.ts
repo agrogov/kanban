@@ -30,6 +30,8 @@ export interface PiReduction {
 	changedMessages: ClineTaskMessage[];
 	/** Token/step deltas for this event, ready for the shared usage accumulator. */
 	usageUpdate?: TaskSessionUsageUpdate;
+	/** Model that served the latest assistant message, so default-model sessions are named. */
+	modelId?: string;
 }
 
 interface ContentBlock {
@@ -130,6 +132,9 @@ export function reducePiEvent(
 						update.costUsd = costTotal;
 					}
 					reduction.usageUpdate = update;
+					if (message.model) {
+						reduction.modelId = message.model;
+					}
 				}
 			}
 			break;

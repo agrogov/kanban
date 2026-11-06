@@ -274,6 +274,9 @@ class PiChatTaskSessionServiceImpl extends NativeChatSessionService {
 		live.unsubscribe = session.subscribe((event: AgentSessionEvent) => {
 			const reduction = reducePiEvent(taskId, entry, live.reducerState, event);
 			this.emitMessages(taskId, entry, reduction.changedMessages);
+			if (reduction.modelId) {
+				this.setModelId(entry, reduction.modelId);
+			}
 			if (reduction.usageUpdate) {
 				this.applyUsageUpdate(entry, reduction.usageUpdate);
 			}

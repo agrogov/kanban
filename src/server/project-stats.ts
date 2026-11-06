@@ -11,10 +11,12 @@ import {
 	type RuntimeProjectStatsResponse,
 	type RuntimeProjectStatsUsageDay,
 	type RuntimeProjectStatsUsageGroup,
+	runtimeAgentIdSchema,
 	runtimeProjectStatsResponseSchema,
 } from "../core/api-contract";
 import { isLiveTaskSessionSummary } from "../core/task-session-state";
 import { getWorkspaceUsagePath, loadWorkspaceStateById } from "../state/workspace-state";
+import { resolveAgentDefaultModelId } from "./default-model-resolver";
 import { dateKey, readUsageLedgerRows, type UsageLedgerRow } from "./usage-ledger";
 
 // `dateKey` is owned by usage-ledger.ts (compaction groups by it); re-exported here for
@@ -74,10 +76,24 @@ function totalTokens(acc: Accumulator): number {
 	return acc.inputTokens + acc.outputTokens + acc.cacheReadTokens + acc.cacheWriteTokens;
 }
 
+// Rows written before the model was known (or for default-model sessions) carry no modelId.
+// Attribute them to the agent's configured default, or to "<agent> (default)" when that
+// cannot be resolved, so the breakdown never shows an "unknown" model.
+async function attributeDefaultModels(rows: UsageLedgerRow[]): Promise<UsageLedgerRow[]> {
+	const defaults = new Map<string, string>();
+	for (const agentId of new Set(rows.filter((row) => !row.modelId).map((row) => row.agentId))) {
+		const resolved = await resolveAgentDefaultModelId(runtimeAgentIdSchema.safeParse(agentId).data ?? null).catch(
+			() => null,
+		);
+		defaults.set(agentId ?? "", resolved ?? `${agentId ?? "agent"} (default)`);
+	}
+	return rows.map((row) => (row.modelId ? row : { ...row, modelId: defaults.get(row.agentId ?? "") ?? null }));
+}
+
 async function readUsageRows(workspaceId: string): Promise<UsageLedgerRow[]> {
 	// Oversized ledgers are compacted here (older per-session rows rolled into
 	// per-day aggregates) before parsing, keeping read cost bounded.
-	return await readUsageLedgerRows(getWorkspaceUsagePath(workspaceId));
+	return await attributeDefaultModels(await readUsageLedgerRows(getWorkspaceUsagePath(workspaceId)));
 }
 
 function percentile(sortedValues: number[], fraction: number): number | null {

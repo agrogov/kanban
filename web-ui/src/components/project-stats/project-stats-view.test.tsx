@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectStatsView } from "@/components/project-stats/project-stats-view";
 import type { UseProjectStatsDataResult } from "@/components/project-stats/use-project-stats-data";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RuntimeProjectStatsResponse } from "@/runtime/types";
 
 declare global {
@@ -107,11 +108,15 @@ describe("ProjectStatsView", () => {
 
 	it("renders usage and flow cards from the stats response", () => {
 		act(() => {
-			root.render(<ProjectStatsView stats={hookResult(statsResponse())} onClose={vi.fn()} />);
+			root.render(
+				<TooltipProvider>
+					<ProjectStatsView stats={hookResult(statsResponse())} onClose={vi.fn()} />
+				</TooltipProvider>,
+			);
 		});
 		const text = container.textContent ?? "";
 		expect(text).toContain("Cache read");
-		expect(text).toContain("116");
+		expect(text).toContain("100");
 		expect(text).toContain("48%");
 		expect(text).toContain("$0.120");
 		expect(text).toContain("claude-chat");
@@ -130,7 +135,11 @@ describe("ProjectStatsView", () => {
 			cacheHitPercent: null,
 		};
 		act(() => {
-			root.render(<ProjectStatsView stats={hookResult(empty)} onClose={vi.fn()} />);
+			root.render(
+				<TooltipProvider>
+					<ProjectStatsView stats={hookResult(empty)} onClose={vi.fn()} />
+				</TooltipProvider>,
+			);
 		});
 		expect(container.textContent).toContain("Token history starts recording");
 	});
