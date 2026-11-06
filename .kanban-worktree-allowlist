@@ -1,0 +1,9 @@
+# Ignored paths that must be provisioned into every Kanban task worktree.
+# Build outputs let task agents run and test this checkout without a full rebuild;
+# .husky/_ is required for git commits to work inside worktrees (core.hooksPath shim dir).
+.husky/_
+dist
+web-ui/dist
+packages/desktop/cli
+packages/desktop/dist
+packages/desktop/out
