@@ -337,7 +337,7 @@ Parameters:
 Notes:
 - Allowed moves: \`backlog\` -> \`in_progress\` | \`done\`; \`in_progress\` -> \`backlog\` | \`review\` | \`done\`; \`review\` -> \`in_progress\` | \`done\`; \`done\` -> \`review\`.
 - Moving to \`done\` reuses the \`task done\` workflow: it stops the session, cleans up the task worktree, and starts linked tasks that become ready.
-- Requeueing out of \`in_progress\` or \`review\` to \`backlog\` stops any live session first.
+- Requeueing out of \`in_progress\` or \`review\` to \`backlog\` stops any live session *before* moving the card, and reports \`sessionStopped\` in the result. If the session cannot be stopped the card is left where it is and the command fails, so a requeued card never has an agent still writing to its worktree.
 
 # Per-Task Agent, Provider, Model, and Effort Overrides
 

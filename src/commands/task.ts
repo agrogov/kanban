@@ -26,7 +26,7 @@ import {
 	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
 } from "../core/task-board-mutations";
-import { isTerminalTaskSessionState } from "../core/task-session-state";
+import { isLiveTaskSessionSummary, isTerminalTaskSessionState } from "../core/task-session-state";
 import { resolveProjectInputPath } from "../projects/project-path";
 import { loadWorkspaceContext, mutateWorkspaceState } from "../state/workspace-state";
 import type { RuntimeAppRouter } from "../trpc/app-router";
@@ -474,15 +474,29 @@ async function listTasks(input: { cwd: string; projectPath?: string; column?: Li
 	};
 }
 
+/** `cleared` means no agent is attached to the task worktree afterwards. */
+export type StopTaskSessionOutcome = { cleared: true } | { cleared: false; error: string };
+
+/**
+ * Stops whatever session a task has, in either backend (native chat first, then the PTY).
+ *
+ * Reports the outcome instead of throwing so each caller can decide whether an unstoppable
+ * session is fatal. A runtime that finds no session to stop reports `ok: false` with no
+ * error, which is the state we wanted anyway and therefore counts as cleared.
+ */
 async function stopTaskRuntimeSession(
 	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>,
 	taskId: string,
-): Promise<void> {
-	await runtimeClient.runtime.stopTaskSession
-		.mutate({
-			taskId,
-		})
-		.catch(() => null);
+): Promise<StopTaskSessionOutcome> {
+	try {
+		const result = await runtimeClient.runtime.stopTaskSession.mutate({ taskId });
+		if (result.ok || !result.error) {
+			return { cleared: true };
+		}
+		return { cleared: false, error: result.error };
+	} catch (error) {
+		return { cleared: false, error: toErrorMessage(error) };
+	}
 }
 
 async function deleteTaskWorkspace(
@@ -727,12 +741,17 @@ const defaultStartTaskDependencies: StartTaskDependencies = {
 };
 
 /**
- * Refuses to start a second agent for a card that is already in progress while a
- * live session is attached to it.
+ * Refuses to start a card that is already in progress with a live session attached to it.
  *
- * Without this, a stale or missing session record (native-chat sessions had no
- * summary until the runtime state hub was plumbed into workspace state) made
- * `task start` spawn another agent into a worktree the first agent was writing to.
+ * Every backend already treats a start request for a live session as a no-op that returns the
+ * existing summary (they all ask `isLiveTaskSessionState`), so this is not what keeps a second
+ * agent out of the worktree. It is what keeps `task start` from *looking* like it worked:
+ * without the check the command silently reused the running session and still reported the card
+ * as freshly started, which is how a stranded card ended up with two owners.
+ *
+ * Scoped to `in_progress` deliberately. Starting a card that sits in `review` with a finished
+ * turn (`awaiting_review`) is the supported "keep working on it" flow, and the backend resumes
+ * the same session for it rather than launching a rival agent.
  */
 export function assertTaskCanStartSession(input: {
 	columnId: RuntimeBoardColumnId;
@@ -746,7 +765,8 @@ export function assertTaskCanStartSession(input: {
 	const agentLabel = session.agentId ?? "an agent";
 	throw new Error(
 		`Task "${input.taskId}" is already in progress with a live session (${session.state}, ${agentLabel}). ` +
-			"Refusing to start a second agent in the same worktree; stop the running session or wait for it to finish.",
+			"Refusing to start a second agent in the same worktree. Wait for the turn to finish, or requeue the " +
+			`card with: kanban task move --task-id ${input.taskId} --column backlog (that stops the session first).`,
 	);
 }
 
@@ -946,6 +966,27 @@ export async function moveTask(
 		);
 	}
 
+	// Stop the session before moving the card, not after. Moving first opens a window where the
+	// card sits in a column another agent can be started from while the previous agent is still
+	// writing to its worktree, and a failed stop would hide behind an `ok: true` result.
+	const session = initialState.sessions[input.taskId] ?? null;
+	const leavesSessionBehind =
+		isLiveTaskSessionSummary(session) &&
+		columnCanHaveLiveTaskSession(initialRecord.columnId) &&
+		!columnCanHaveLiveTaskSession(targetColumnId);
+	let sessionStopped = false;
+	if (leavesSessionBehind) {
+		const outcome = await stopTaskRuntimeSession(runtimeClient, input.taskId);
+		if (!outcome.cleared) {
+			throw new Error(
+				`Task "${input.taskId}" was left in "${formatTaskColumnForHumans(initialRecord.columnId)}" ` +
+					`because its live session could not be stopped: ${outcome.error}. ` +
+					"Stop the session from the app, then retry the move.",
+			);
+		}
+		sessionStopped = true;
+	}
+
 	const moved = await dependencies.updateRuntimeWorkspaceState(runtimeClient, workspaceRepoPath, (latestState) => {
 		const movement = moveTaskToColumn(latestState.board, input.taskId, targetColumnId);
 		if (!movement.moved || !movement.task) {
@@ -965,19 +1006,10 @@ export async function moveTask(
 		};
 	});
 
-	const session = initialState.sessions[input.taskId] ?? null;
-	const hasLiveSession = session !== null && !isTerminalTaskSessionState(session.state);
-	if (
-		hasLiveSession &&
-		columnCanHaveLiveTaskSession(initialRecord.columnId) &&
-		!columnCanHaveLiveTaskSession(targetColumnId)
-	) {
-		await stopTaskRuntimeSession(runtimeClient, input.taskId);
-	}
-
 	return {
 		ok: true,
 		task: moved.task,
+		sessionStopped,
 		workspacePath: workspaceRepoPath,
 	};
 }

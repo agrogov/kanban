@@ -351,6 +351,7 @@ describe("startTask", () => {
 interface MoveTaskHarness {
 	dependencies: MoveTaskDependencies;
 	getMutationCount: () => number;
+	getCallOrder: () => string[];
 	stopTaskSession: ReturnType<typeof vi.fn>;
 	trashTask: ReturnType<typeof vi.fn>;
 }
@@ -373,9 +374,17 @@ function createBoardStateWithTaskInColumn(columnId: RuntimeBoardColumnId): Runti
 	};
 }
 
-function createMoveTaskHarness(state: RuntimeWorkspaceStateResponse): MoveTaskHarness {
+function createMoveTaskHarness(
+	state: RuntimeWorkspaceStateResponse,
+	options: { stopResult?: { ok: boolean; error?: string } } = {},
+): MoveTaskHarness {
 	let mutationCount = 0;
-	const stopTaskSession = vi.fn(async () => ({ ok: true }));
+	const callOrder: string[] = [];
+	const stopResult = options.stopResult ?? { ok: true };
+	const stopTaskSession = vi.fn(async () => {
+		callOrder.push("stop");
+		return stopResult;
+	});
 	const runtimeClient = {
 		workspace: { getState: { query: vi.fn(async () => state) } },
 		runtime: { stopTaskSession: { mutate: stopTaskSession } },
@@ -391,11 +400,18 @@ function createMoveTaskHarness(state: RuntimeWorkspaceStateResponse): MoveTaskHa
 		createRuntimeClient: () => runtimeClient as never,
 		updateRuntimeWorkspaceState: async (_client, _repoPath, mutate) => {
 			mutationCount += 1;
+			callOrder.push("move");
 			return mutate(state).value;
 		},
 		trashTask,
 	} satisfies MoveTaskDependencies;
-	return { dependencies, getMutationCount: () => mutationCount, stopTaskSession, trashTask };
+	return {
+		dependencies,
+		getMutationCount: () => mutationCount,
+		getCallOrder: () => [...callOrder],
+		stopTaskSession,
+		trashTask,
+	};
 }
 
 describe("moveTask", () => {
@@ -410,14 +426,54 @@ describe("moveTask", () => {
 		expect(harness.stopTaskSession).not.toHaveBeenCalled();
 	});
 
-	it("stops a live session when requeueing to backlog", async () => {
+	it("stops a live session before requeueing to backlog", async () => {
 		const state = createBoardStateWithTaskInColumn("in_progress");
 		state.sessions["task-1"] = createTaskSummary({ state: "running", agentId: "pi-chat" });
 		const harness = createMoveTaskHarness(state);
 
-		await moveTask({ cwd: "/tmp/repo", taskId: "task-1", column: "backlog" }, harness.dependencies);
+		const result = await moveTask({ cwd: "/tmp/repo", taskId: "task-1", column: "backlog" }, harness.dependencies);
 
 		expect(harness.stopTaskSession).toHaveBeenCalledWith({ taskId: "task-1" });
+		// The stop must land before the board edit: a card in backlog can be started again, so
+		// moving first would open a window where two agents share one worktree.
+		expect(harness.getCallOrder()).toEqual(["stop", "move"]);
+		expect(result).toMatchObject({ ok: true, sessionStopped: true });
+	});
+
+	it("keeps a live session when the move stays inside the work columns", async () => {
+		const state = createBoardStateWithTaskInColumn("in_progress");
+		state.sessions["task-1"] = createTaskSummary({ state: "awaiting_review", agentId: "claude-chat" });
+		const harness = createMoveTaskHarness(state);
+
+		const result = await moveTask({ cwd: "/tmp/repo", taskId: "task-1", column: "review" }, harness.dependencies);
+
+		expect(harness.stopTaskSession).not.toHaveBeenCalled();
+		expect(result).toMatchObject({ ok: true, sessionStopped: false });
+	});
+
+	it("leaves the card in place when its live session cannot be stopped", async () => {
+		const state = createBoardStateWithTaskInColumn("in_progress");
+		state.sessions["task-1"] = createTaskSummary({ state: "running", agentId: "pi-chat" });
+		const harness = createMoveTaskHarness(state, {
+			stopResult: { ok: false, error: "session host unreachable" },
+		});
+
+		await expect(
+			moveTask({ cwd: "/tmp/repo", taskId: "task-1", column: "backlog" }, harness.dependencies),
+		).rejects.toThrow(/could not be stopped: session host unreachable/);
+		expect(harness.getMutationCount()).toBe(0);
+	});
+
+	it("treats a session that is already gone as stopped", async () => {
+		const state = createBoardStateWithTaskInColumn("in_progress");
+		state.sessions["task-1"] = createTaskSummary({ state: "running", agentId: "pi-chat" });
+		// The runtime reports `ok: false` with no error when it finds nothing to stop.
+		const harness = createMoveTaskHarness(state, { stopResult: { ok: false } });
+
+		const result = await moveTask({ cwd: "/tmp/repo", taskId: "task-1", column: "backlog" }, harness.dependencies);
+
+		expect(result).toMatchObject({ ok: true, sessionStopped: true });
+		expect(harness.getMutationCount()).toBe(1);
 	});
 
 	it("rejects a transition the UI does not allow without touching the board", async () => {
