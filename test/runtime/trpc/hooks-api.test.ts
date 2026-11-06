@@ -25,6 +25,55 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 }
 
 describe("createHooksApi", () => {
+	it("rejects ingest for a different workspace when the bearer token is workspace-scoped", async () => {
+		const manager = {
+			getSummary: vi.fn(() => createSummary({ state: "running" })),
+		} as unknown as TerminalSessionManager;
+
+		const api = createHooksApi({
+			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
+			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastTaskReadyForReview: vi.fn(),
+		});
+
+		const response = await api.ingest(
+			{ taskId: "task-1", workspaceId: "workspace-2", event: "to_review" },
+			{
+				workspaceId: "workspace-1",
+			},
+		);
+
+		expect(response).toEqual({ ok: false, error: 'Hook token is not valid for workspace "workspace-2".' });
+		expect(manager.getSummary).not.toHaveBeenCalled();
+	});
+
+	it("allows ingest for the token's own workspace and for unbound hook tokens", async () => {
+		const manager = {
+			getSummary: vi.fn(() => createSummary({ state: "running" })),
+			transitionToReview: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "hook" })),
+		} as unknown as TerminalSessionManager;
+
+		const api = createHooksApi({
+			getWorkspacePathById: vi.fn(() => "/tmp/repo"),
+			ensureTerminalManagerForWorkspace: vi.fn(async () => manager),
+			broadcastRuntimeWorkspaceStateUpdated: vi.fn(),
+			broadcastTaskReadyForReview: vi.fn(),
+		});
+
+		const scoped = await api.ingest(
+			{ taskId: "task-1", workspaceId: "workspace-1", event: "to_review" },
+			{ workspaceId: "workspace-1" },
+		);
+		expect(scoped).toEqual({ ok: true });
+
+		const unbound = await api.ingest(
+			{ taskId: "task-1", workspaceId: "workspace-9", event: "activity" },
+			{ workspaceId: null },
+		);
+		expect(unbound).toEqual({ ok: true });
+	});
+
 	it("treats ineligible hook transitions as successful no-ops", async () => {
 		const manager = {
 			getSummary: vi.fn(() => createSummary({ state: "running" })),

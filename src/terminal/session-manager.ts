@@ -10,6 +10,7 @@ import type {
 	RuntimeTaskTurnCheckpoint,
 } from "../core/api-contract";
 import { isLiveTaskSessionState } from "../core/task-session-state";
+import { INTERNAL_TOKEN_ENV, issueScopedHookToken } from "../security/passcode-manager";
 import {
 	type AgentAdapterLaunchInput,
 	type AgentExitReviewActivityResolver,
@@ -381,7 +382,16 @@ export class TerminalSessionManager implements TerminalSessionService {
 			agentSettings: request.agentSettings,
 		});
 
-		const env = buildTerminalEnvironment(request.env, launch.env);
+		// In remote passcode mode the server's environment holds the internal bearer
+		// token, which grants every `/api/` route including `runtime.runCommand` (shell
+		// execution). Agent PTYs only need hook ingest, so overwrite the inherited value
+		// with a workspace-scoped, hooks-only token. Local mode returns null (no token).
+		const scopedHookToken = issueScopedHookToken(request.workspaceId ?? null);
+		const env = buildTerminalEnvironment(
+			request.env,
+			launch.env,
+			scopedHookToken ? { [INTERNAL_TOKEN_ENV]: scopedHookToken } : undefined,
+		);
 
 		// Adapters can wrap the configured agent binary when they need extra runtime wiring
 		// (for example, Codex uses a wrapper script to watch session logs for hook transitions).

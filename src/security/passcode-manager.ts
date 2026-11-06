@@ -30,9 +30,17 @@ interface SessionEntry {
 interface RateLimitEntry {
 	attempts: number;
 	lockedUntil: number | null;
+	updatedAt: number;
 }
 
 const INTERNAL_TOKEN_ENV = "KANBAN_INTERNAL_AUTH_TOKEN";
+
+/** Scoped hook tokens let an agent child process reach `hooks.*` routes for its own
+ * workspace without carrying the full internal bearer token, which grants every
+ * `/api/` route — including `runtime.runCommand`, i.e. shell execution. */
+const HOOK_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // sliding: refreshed on each use
+const RATE_LIMIT_ENTRY_TTL_MS = 60 * 60 * 1000;
+const AUTH_STATE_PRUNE_INTERVAL_MS = 60 * 1000;
 
 let passcodeState: PasscodeState | null = null;
 let passcodeEnabled = true;
@@ -40,6 +48,36 @@ let internalAuthToken: string | null = null;
 
 const sessions = new Map<string, SessionEntry>();
 const rateLimitByIp = new Map<string, RateLimitEntry>();
+const scopedHookTokens = new Map<string, { workspaceId: string | null; expiresAt: number }>();
+
+let lastAuthStatePruneAt = 0;
+
+/**
+ * Opportunistic sweep of expired entries. Sessions are keyed per login and hook tokens
+ * per spawned agent, so a long-lived remote server without this keeps growing.
+ */
+function pruneStaleAuthState(now: number): void {
+	if (now - lastAuthStatePruneAt < AUTH_STATE_PRUNE_INTERVAL_MS) {
+		return;
+	}
+	lastAuthStatePruneAt = now;
+	for (const [token, entry] of sessions) {
+		if (now - entry.issuedAt > SESSION_TTL_MS) {
+			sessions.delete(token);
+		}
+	}
+	for (const [ip, entry] of rateLimitByIp) {
+		const lockoutExpired = entry.lockedUntil !== null && now >= entry.lockedUntil;
+		if (lockoutExpired || now - entry.updatedAt > RATE_LIMIT_ENTRY_TTL_MS) {
+			rateLimitByIp.delete(ip);
+		}
+	}
+	for (const [token, entry] of scopedHookTokens) {
+		if (now > entry.expiresAt) {
+			scopedHookTokens.delete(token);
+		}
+	}
+}
 
 function generateRandomPasscode(): string {
 	// Exclude visually ambiguous chars: 0/O, 1/I/l
@@ -74,6 +112,11 @@ export function generatePasscode(): string {
 export function disablePasscode(): void {
 	passcodeEnabled = false;
 	passcodeState = null;
+	// The internal token and hook tokens only exist to gate passcode mode.
+	// Keeping them alive after disabling it would leave child processes holding
+	// bearer credentials for an auth model that is no longer enforced.
+	internalAuthToken = null;
+	scopedHookTokens.clear();
 }
 
 /** Whether passcode enforcement is currently active. */
@@ -93,6 +136,7 @@ export function isPasscodeEnabled(): boolean {
 export function revokeAndRegeneratePasscode(): string {
 	sessions.clear();
 	rateLimitByIp.clear();
+	scopedHookTokens.clear();
 	internalAuthToken = null;
 	const passcode = generatePasscode();
 	generateInternalToken();
@@ -118,6 +162,7 @@ export function validatePasscode(submitted: string): boolean {
 
 /** Issue a new session token after successful passcode verification. */
 export function issueSession(): string {
+	pruneStaleAuthState(Date.now());
 	const token = randomBytes(32).toString("hex");
 	sessions.set(token, { issuedAt: Date.now() });
 	return token;
@@ -125,6 +170,7 @@ export function issueSession(): string {
 
 /** Validate a session token. Returns true if valid and not expired. */
 export function validateSession(token: string): boolean {
+	pruneStaleAuthState(Date.now());
 	const entry = sessions.get(token);
 	if (!entry) return false;
 	if (Date.now() - entry.issuedAt > SESSION_TTL_MS) {
@@ -156,9 +202,10 @@ export interface RateLimitResult {
 /** Check rate limit for a given IP address before a passcode attempt. */
 export function checkRateLimit(ip: string): RateLimitResult {
 	const now = Date.now();
+	pruneStaleAuthState(now);
 	let entry = rateLimitByIp.get(ip);
 	if (!entry) {
-		entry = { attempts: 0, lockedUntil: null };
+		entry = { attempts: 0, lockedUntil: null, updatedAt: now };
 		rateLimitByIp.set(ip, entry);
 	}
 	if (entry.lockedUntil !== null && now >= entry.lockedUntil) {
@@ -180,10 +227,11 @@ export function recordFailedAttempt(ip: string): void {
 	const now = Date.now();
 	let entry = rateLimitByIp.get(ip);
 	if (!entry) {
-		entry = { attempts: 0, lockedUntil: null };
+		entry = { attempts: 0, lockedUntil: null, updatedAt: now };
 		rateLimitByIp.set(ip, entry);
 	}
 	entry.attempts += 1;
+	entry.updatedAt = now;
 	if (entry.attempts >= RATE_LIMIT_MAX_ATTEMPTS) {
 		entry.lockedUntil = now + RATE_LIMIT_LOCKOUT_MS;
 	}
@@ -239,6 +287,40 @@ export function validateInternalToken(submitted: string): boolean {
 	if (expectedBuf.length !== submittedBuf.length) return false;
 
 	return timingSafeEqual(submittedBuf, expectedBuf);
+}
+
+/**
+ * Issue a hook-only bearer token for a spawned agent process.
+ *
+ * Unlike the internal token this value is accepted only for `hooks.*` tRPC routes,
+ * and — when `workspaceId` is provided — only for hook ingest targeting that
+ * workspace. The server gate (`src/server/runtime-server.ts`) enforces the route
+ * restriction; `hooks-api.ts` enforces the workspace match.
+ *
+ * Returns `null` when no internal token exists (local or `--no-passcode` modes):
+ * callers then leave the inherited environment untouched.
+ */
+export function issueScopedHookToken(workspaceId: string | null): string | null {
+	if (internalAuthToken === null) {
+		return null;
+	}
+	pruneStaleAuthState(Date.now());
+	const token = randomBytes(32).toString("hex");
+	scopedHookTokens.set(token, { workspaceId, expiresAt: Date.now() + HOOK_TOKEN_TTL_MS });
+	return token;
+}
+
+/** Resolve a scoped hook token to its workspace constraint, refreshing its sliding TTL. */
+export function resolveScopedHookToken(token: string): { workspaceId: string | null } | null {
+	const entry = scopedHookTokens.get(token);
+	if (!entry) return null;
+	const now = Date.now();
+	if (now > entry.expiresAt) {
+		scopedHookTokens.delete(token);
+		return null;
+	}
+	entry.expiresAt = now + HOOK_TOKEN_TTL_MS;
+	return { workspaceId: entry.workspaceId };
 }
 
 /**

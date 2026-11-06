@@ -200,6 +200,13 @@ export interface RuntimeTrpcWorkspaceScope {
 export interface RuntimeTrpcContext {
 	requestedWorkspaceId: string | null;
 	workspaceScope: RuntimeTrpcWorkspaceScope | null;
+	/**
+	 * Set when the request authenticated with a scoped hook token (the value agents
+	 * inherit in place of the master internal token). `workspaceId` null means
+	 * hooks-only but not workspace-bound; the server gate already restricted the
+	 * route to `hooks.*`.
+	 */
+	hookTokenScope: { workspaceId: string | null } | null;
 	runtimeApi: {
 		loadConfig: (scope: RuntimeTrpcWorkspaceScope | null) => Promise<RuntimeConfigResponse>;
 		saveConfig: (
@@ -379,7 +386,10 @@ export interface RuntimeTrpcContext {
 		) => Promise<RuntimeDirectoryListResponse>;
 	};
 	hooksApi: {
-		ingest: (input: RuntimeHookIngestRequest) => Promise<RuntimeHookIngestResponse>;
+		ingest: (
+			input: RuntimeHookIngestRequest,
+			hookTokenScope?: { workspaceId: string | null } | null,
+		) => Promise<RuntimeHookIngestResponse>;
 	};
 }
 
@@ -741,7 +751,7 @@ export const runtimeAppRouter = t.router({
 			.input(runtimeHookIngestRequestSchema)
 			.output(runtimeHookIngestResponseSchema)
 			.mutation(async ({ ctx, input }) => {
-				return await ctx.hooksApi.ingest(input);
+				return await ctx.hooksApi.ingest(input, ctx.hookTokenScope);
 			}),
 	}),
 });

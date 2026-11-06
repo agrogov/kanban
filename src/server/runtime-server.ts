@@ -39,6 +39,7 @@ import {
 	isPasscodeEnabled,
 	issueSession,
 	recordFailedAttempt,
+	resolveScopedHookToken,
 	validateInternalToken,
 	validatePasscode,
 	validateSession,
@@ -107,6 +108,19 @@ function readWorkspaceIdFromRequest(request: IncomingMessage, requestUrl: URL): 
 		}
 	}
 	return null;
+}
+
+/**
+ * Resolve a bearer token to a scoped hook-token workspace, if it is one.
+ * The master internal token never resolves here (it lives in a different store),
+ * so callers get `null` for full-access or unauthenticated requests.
+ */
+function readHookTokenScope(req: IncomingMessage): { workspaceId: string | null } | null {
+	const bearerToken = extractBearerToken(req.headers.authorization);
+	if (bearerToken === null || validateInternalToken(bearerToken)) {
+		return null;
+	}
+	return resolveScopedHookToken(bearerToken);
 }
 
 export async function createRuntimeServer(deps: CreateRuntimeServerDependencies): Promise<RuntimeServer> {
@@ -217,6 +231,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		return {
 			requestedWorkspaceId: scope.requestedWorkspaceId,
 			workspaceScope: scope.workspaceScope,
+			hookTokenScope: readHookTokenScope(req),
 			runtimeApi: createRuntimeApi({
 				getActiveWorkspaceId: deps.workspaceRegistry.getActiveWorkspaceId,
 				getActiveRuntimeConfig: deps.workspaceRegistry.getActiveRuntimeConfig,
@@ -395,7 +410,14 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				const sessionAuth = sessionToken !== null && validateSession(sessionToken);
 				const bearerToken = extractBearerToken(req.headers.authorization);
 				const internalAuth = bearerToken !== null && validateInternalToken(bearerToken);
-				const authenticated = sessionAuth || internalAuth;
+				// A scoped hook token (inherited by agent PTYs instead of the master internal
+				// token) authenticates only the hooks ingest route. Workspace binding is
+				// enforced inside hooks-api via the tRPC context's `hookTokenScope`.
+				const scopedHookAuth =
+					!internalAuth && bearerToken !== null
+						? resolveScopedHookToken(bearerToken) !== null && pathname.startsWith("/api/trpc/hooks")
+						: false;
+				const authenticated = sessionAuth || internalAuth || scopedHookAuth;
 				if (!authenticated) {
 					// Static assets (JS, CSS, images, fonts, icons, manifest) are served
 					// freely even when unauthenticated. They contain no user data and are

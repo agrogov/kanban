@@ -41,11 +41,19 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 	const checkpointRefDelete = deps.deleteTaskTurnCheckpointRef ?? deleteTaskTurnCheckpointRef;
 
 	return {
-		ingest: async (input) => {
+		ingest: async (input, hookTokenScope) => {
 			try {
 				const body = parseHookIngestRequest(input);
 				const taskId = body.taskId;
 				const workspaceId = body.workspaceId;
+				// A scoped hook token may only move its own workspace's board. Master-token
+				// and local-mode requests arrive with `hookTokenScope` null/undefined.
+				if (hookTokenScope && hookTokenScope.workspaceId !== null && hookTokenScope.workspaceId !== workspaceId) {
+					return {
+						ok: false,
+						error: `Hook token is not valid for workspace "${workspaceId}".`,
+					} satisfies RuntimeHookIngestResponse;
+				}
 				const event = body.event;
 				const knownWorkspacePath = deps.getWorkspacePathById(workspaceId);
 				const workspaceContext = knownWorkspacePath ? null : await loadWorkspaceContextById(workspaceId);
