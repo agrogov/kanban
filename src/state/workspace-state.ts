@@ -687,13 +687,18 @@ export async function saveWorkspaceState(
 			updatedAt: Date.now(),
 		};
 
+		// meta.json (the revision) is written FIRST. Each file is atomic on its own, but a
+		// crash between writes must never leave new content paired with the old revision:
+		// a client caching `revision N + old board` would then pass the CAS check later and
+		// silently clobber the committed board. With meta first, a half-completed save only
+		// ever shows new revision + old content, and stale writers hit WorkspaceStateConflictError.
+		await lockedFileSystem.writeJsonFileAtomic(metaPath, nextMeta, {
+			lock: null,
+		});
 		await lockedFileSystem.writeJsonFileAtomic(getWorkspaceBoardPath(context.workspaceId), board, {
 			lock: null,
 		});
 		await lockedFileSystem.writeJsonFileAtomic(getWorkspaceSessionsPath(context.workspaceId), sessions, {
-			lock: null,
-		});
-		await lockedFileSystem.writeJsonFileAtomic(metaPath, nextMeta, {
 			lock: null,
 		});
 
@@ -742,13 +747,15 @@ export async function mutateWorkspaceState<T>(
 			updatedAt: Date.now(),
 		};
 
+		// Same meta-first ordering as `saveWorkspaceState`: never leave new content
+		// paired with the revision that predates it.
+		await lockedFileSystem.writeJsonFileAtomic(getWorkspaceMetaPath(context.workspaceId), nextMeta, {
+			lock: null,
+		});
 		await lockedFileSystem.writeJsonFileAtomic(getWorkspaceBoardPath(context.workspaceId), nextBoard, {
 			lock: null,
 		});
 		await lockedFileSystem.writeJsonFileAtomic(getWorkspaceSessionsPath(context.workspaceId), nextSessions, {
-			lock: null,
-		});
-		await lockedFileSystem.writeJsonFileAtomic(getWorkspaceMetaPath(context.workspaceId), nextMeta, {
 			lock: null,
 		});
 
