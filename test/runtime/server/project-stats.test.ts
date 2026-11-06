@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import type { RuntimeBoardData, RuntimeWorkspaceStateResponse } from "../../../src/core/api-contract";
 import { loadProjectStats } from "../../../src/server/project-stats";
@@ -125,5 +125,94 @@ describe("loadProjectStats", () => {
 		});
 		expect(stats.usage.daily).toHaveLength(11);
 		expect(stats.usage.totals.taskCount).toBe(1);
+	});
+
+	describe("DST day iteration", () => {
+		// Regression for commit d993a9b7: fixed `cursor += MS_PER_DAY` stepping produced
+		// duplicate dateKeys on 23h spring-forward days and skipped days on 25h fall-back days.
+		const originalTz = process.env.TZ;
+		afterEach(() => {
+			if (originalTz === undefined) {
+				delete process.env.TZ;
+			} else {
+				process.env.TZ = originalTz;
+			}
+		});
+
+		function runWithNewYorkTz(body: () => Promise<void>): Promise<void> {
+			process.env.TZ = "America/New_York";
+			return body().finally(() => {
+				if (originalTz === undefined) {
+					delete process.env.TZ;
+				} else {
+					process.env.TZ = originalTz;
+				}
+			});
+		}
+
+		it("produces unique contiguous dateKeys across a 23-hour spring-forward day", async () => {
+			await runWithNewYorkTz(async () => {
+				// 2026-03-08 is the spring-forward day in America/New_York (23 hours long).
+				// Fixed 24h stepping lands the cursor at 01:00 on 03-09, so with `now` at 00:30
+				// the old code ended the series on 03-08 and dropped today entirely.
+				const now = new Date(2026, 2, 9, 0, 30, 0).getTime();
+				const stats = await loadProjectStats("ws", 7, {
+					now: () => now,
+					readRows: async () => [row({ ts: new Date(2026, 2, 8, 20, 0, 0).getTime() })],
+					loadWorkspaceState: async () => workspaceState(boardWith([])),
+				});
+				const keys = stats.usage.daily.map((day) => day.date);
+				expect(keys).toEqual([
+					"2026-03-03",
+					"2026-03-04",
+					"2026-03-05",
+					"2026-03-06",
+					"2026-03-07",
+					"2026-03-08",
+					"2026-03-09",
+				]);
+				expect(new Set(keys).size).toBe(7);
+				expect(stats.flow.daily.map((day) => day.date)).toEqual(keys);
+				// The evening row on the short day must land on 03-08, not the duplicate bucket.
+				expect(stats.usage.daily[5]?.inputTokens).toBe(100);
+				expect(stats.usage.totals.inputTokens).toBe(100);
+			});
+		});
+
+		it("produces unique contiguous dateKeys across a 25-hour fall-back day", async () => {
+			await runWithNewYorkTz(async () => {
+				// 2026-11-01 is the fall-back day in America/New_York (25 hours long).
+				const now = new Date(2026, 10, 2, 12, 0, 0).getTime();
+				const stats = await loadProjectStats("ws", 7, {
+					now: () => now,
+					readRows: async () => [row({ ts: new Date(2026, 10, 1, 20, 0, 0).getTime() })],
+					loadWorkspaceState: async () =>
+						workspaceState(
+							boardWith([
+								{
+									id: "trash",
+									cards: [{ id: "d1", createdAt: new Date(2026, 9, 30, 9, 0, 0).getTime(), updatedAt: now }],
+								},
+							]),
+						),
+				});
+				const keys = stats.usage.daily.map((day) => day.date);
+				expect(keys).toEqual([
+					"2026-10-27",
+					"2026-10-28",
+					"2026-10-29",
+					"2026-10-30",
+					"2026-10-31",
+					"2026-11-01",
+					"2026-11-02",
+				]);
+				expect(new Set(keys).size).toBe(7);
+				// Flow buckets share the same day series and stay unique/contiguous.
+				expect(stats.flow.daily.map((day) => day.date)).toEqual(keys);
+				expect(stats.usage.daily[5]?.inputTokens).toBe(100);
+				expect(stats.flow.daily[3]?.created).toBe(1);
+				expect(stats.flow.totals.created).toBe(1);
+			});
+		});
 	});
 });

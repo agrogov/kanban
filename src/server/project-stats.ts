@@ -16,8 +16,6 @@ import { isLiveTaskSessionSummary } from "../core/task-session-state";
 import { getWorkspaceUsagePath, loadWorkspaceStateById } from "../state/workspace-state";
 import type { UsageLedgerRow } from "./usage-recorder";
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
 interface Accumulator {
 	inputTokens: number;
 	outputTokens: number;
@@ -62,6 +60,15 @@ export function dateKey(ts: number): string {
 function startOfDay(ts: number): number {
 	const date = new Date(ts);
 	date.setHours(0, 0, 0, 0);
+	return date.getTime();
+}
+
+// Local midnight `daysAgo` *calendar* days before `now`. Stepping back by n * 24h instead
+// lands on the wrong day across DST transitions (23h and 25h days), which duplicates or
+// skips dateKeys in the daily series.
+function startOfDayDaysAgo(now: number, daysAgo: number): number {
+	const date = new Date(startOfDay(now));
+	date.setDate(date.getDate() - daysAgo);
 	return date.getTime();
 }
 
@@ -146,22 +153,23 @@ function topGroups(
 }
 
 function daySeriesRange(rangeDays: RuntimeProjectStatsRangeDays, rows: UsageLedgerRow[], now: number): string[] {
-	const keys: string[] = [];
+	let start: number;
 	if (rangeDays > 0) {
-		const start = startOfDay(now - (rangeDays - 1) * MS_PER_DAY);
-		for (let cursor = start; cursor <= now; cursor += MS_PER_DAY) {
-			keys.push(dateKey(cursor));
-		}
-		return keys;
+		start = startOfDayDaysAgo(now, rangeDays - 1);
+	} else {
+		const dataTs: number[] = rows.map((row) => row.ts);
+		const oldest = dataTs.length > 0 ? Math.min(...dataTs) : now;
+		// "All time" is capped so a years-old ledger cannot explode the payload; the cap only
+		// trims the left edge, recent history is always included.
+		start = Math.max(startOfDay(Math.min(oldest, now)), startOfDayDaysAgo(now, 365));
 	}
-	const dataTs: number[] = rows.map((row) => row.ts);
-	const oldest = dataTs.length > 0 ? Math.min(...dataTs) : now;
-	const start = startOfDay(Math.min(oldest, now));
-	// "All time" is capped so a years-old ledger cannot explode the payload; the cap only
-	// trims the left edge, recent history is always included.
-	const limitedStart = Math.max(start, startOfDay(now - 365 * MS_PER_DAY));
-	for (let cursor = limitedStart; cursor <= now; cursor += MS_PER_DAY) {
-		keys.push(dateKey(cursor));
+	// Advance one calendar day at a time (not by fixed 24h steps) so 23h/25h DST days
+	// produce neither duplicate nor skipped dateKeys.
+	const keys: string[] = [];
+	const cursor = new Date(start);
+	while (cursor.getTime() <= now) {
+		keys.push(dateKey(cursor.getTime()));
+		cursor.setDate(cursor.getDate() + 1);
 	}
 	return keys;
 }
@@ -185,7 +193,7 @@ export async function loadProjectStats(
 ): Promise<RuntimeProjectStatsResponse> {
 	const deps = { ...defaultDependencies, ...overrides };
 	const now = deps.now();
-	const from = rangeDays > 0 ? startOfDay(now - (rangeDays - 1) * MS_PER_DAY) : 0;
+	const from = rangeDays > 0 ? startOfDayDaysAgo(now, rangeDays - 1) : 0;
 	const [rows, workspaceState] = await Promise.all([deps.readRows(workspaceId), deps.loadWorkspaceState(workspaceId)]);
 	const windowedRows = rows.filter((row) => row.ts >= from);
 
