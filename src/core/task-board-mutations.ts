@@ -224,6 +224,17 @@ function getLinkedBacklogTaskIdsReadyAfterTaskTrashed(
 		}
 		readyTaskIds.add(dependency.fromTaskId);
 	}
+	// A waiter is ready only when every task it waits on is done: trashing one of several
+	// prerequisites must not start it while another is still unfinished.
+	for (const dependency of board.dependencies) {
+		if (!readyTaskIds.has(dependency.fromTaskId) || dependency.toTaskId === taskId) {
+			continue;
+		}
+		const prerequisiteColumnId = getTaskColumnId(board, dependency.toTaskId);
+		if (prerequisiteColumnId !== null && prerequisiteColumnId !== "trash") {
+			readyTaskIds.delete(dependency.fromTaskId);
+		}
+	}
 	return [...readyTaskIds];
 }
 
