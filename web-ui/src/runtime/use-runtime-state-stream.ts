@@ -20,6 +20,14 @@ import type {
 const STREAM_RECONNECT_BASE_DELAY_MS = 500;
 const STREAM_RECONNECT_MAX_DELAY_MS = 5_000;
 
+/**
+ * Per-task cap for streamed chat history kept in this store. Long agent runs can
+ * emit thousands of messages, and the store lives for the page's lifetime. Older
+ * messages stay available through the chat panel's own load-from-server path, so
+ * trimming the front here only bounds memory.
+ */
+const MAX_STREAMED_TASK_CHAT_MESSAGES = 500;
+
 function mergeTaskSessionSummaries(
 	currentSessions: Record<string, RuntimeTaskSessionSummary>,
 	summaries: RuntimeTaskSessionSummary[],
@@ -119,7 +127,10 @@ function upsertTaskChatMessage(
 ): RuntimeTaskChatMessage[] {
 	const existingIndex = currentMessages.findIndex((message) => message.id === nextMessage.id);
 	if (existingIndex < 0) {
-		return [...currentMessages, nextMessage];
+		const appended = [...currentMessages, nextMessage];
+		return appended.length > MAX_STREAMED_TASK_CHAT_MESSAGES
+			? appended.slice(appended.length - MAX_STREAMED_TASK_CHAT_MESSAGES)
+			: appended;
 	}
 	const existingMessage = currentMessages[existingIndex];
 	if (
