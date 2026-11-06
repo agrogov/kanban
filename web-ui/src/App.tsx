@@ -554,6 +554,7 @@ export default function App(): ReactElement {
 			return;
 		}
 		setIsGitHistoryOpen((current) => !current);
+		setIsProjectStatsOpen(false);
 	}, [hasNoProjects]);
 	const handleCloseGitHistory = useCallback(() => {
 		setIsGitHistoryOpen(false);
