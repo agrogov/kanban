@@ -26,12 +26,17 @@ function axisLabel(dateKey: string): string {
 	if (hour !== undefined) {
 		return `${hour}:00`;
 	}
-	const [, month, day] = dateKey.split("-").map(Number);
-	if (!month || !day) {
+	const [year, month, day] = dateKey.split("-").map(Number);
+	if (!year || !month || !day) {
 		return dateKey;
 	}
-	const date = new Date(Number(month) - 1, Number(day), 1);
+	const date = new Date(year, month - 1, day);
 	return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+// Full-precision label for hover titles: hourly keys read `YYYY-MM-DD HH:00`.
+function tooltipLabel(key: string): string {
+	return key.replace(/T(\d{2})$/, " $1:00");
 }
 
 export function StatsBarChart({ labels, series, mode = "stack", height = 120, formatValue }: StatsBarChartProps) {
@@ -46,11 +51,11 @@ export function StatsBarChart({ labels, series, mode = "stack", height = 120, fo
 					const dayTotal = totals[index] ?? 0;
 					const dayTitle =
 						dayTotal > 0
-							? `${label} · ${series
+							? `${tooltipLabel(label)} · ${series
 									.filter((entry) => (entry.values[index] ?? 0) > 0)
 									.map((entry) => `${entry.label}: ${formatValue(entry.values[index] ?? 0, entry)}`)
 									.join(" · ")}`
-							: label;
+							: tooltipLabel(label);
 					return (
 						<div
 							key={label}

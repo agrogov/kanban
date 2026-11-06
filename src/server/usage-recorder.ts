@@ -6,6 +6,7 @@
 // compaction in usage-ledger.ts never affects what this recorder writes.
 import type { RuntimeTaskSessionSummary } from "../core/api-contract";
 import { getWorkspaceUsagePath } from "../state/workspace-state";
+import { resolveAgentDefaultModelId } from "./default-model-resolver";
 import { appendUsageLedgerRow, type UsageLedgerRow } from "./usage-ledger";
 
 export type { UsageLedgerRow };
@@ -82,7 +83,12 @@ export function createUsageRecorder(
 			return;
 		}
 		queue = queue
-			.then(() => appendRow(getWorkspaceUsagePath(workspaceId), row))
+			.then(async () => {
+				// Sessions started without a model override report no model; attribute them to
+				// the agent's configured default so stats never show "unknown" for them.
+				const modelId = row.modelId ?? (await resolveAgentDefaultModelId(summary.agentId).catch(() => null));
+				await appendRow(getWorkspaceUsagePath(workspaceId), { ...row, modelId });
+			})
 			.catch(() => {
 				// Ledger failures must never break the session stream; stats degrade to missing days.
 			});
