@@ -11,6 +11,7 @@ import type {
 	RuntimeTaskTurnCheckpoint,
 } from "../core/api-contract";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
+import { isLiveTaskSessionState } from "../core/task-session-state";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import { captureTaskTurnCheckpoint, deleteTaskTurnCheckpointRef } from "../workspace/turn-checkpoints";
 import {
@@ -382,11 +383,13 @@ export class InMemoryClineTaskSessionService implements ClineTaskSessionService 
 
 	async startTaskSession(request: StartClineTaskSessionRequest): Promise<RuntimeTaskSessionSummary> {
 		const existing = this.messageRepository.getTaskEntry(request.taskId);
+		// A live session already owns the worktree, so a start request is a no-op that
+		// returns the existing summary instead of launching a second agent into it.
 		if (
 			!request.resumeFromTrash &&
 			!request.resumeFromPersistence &&
 			existing &&
-			(existing.summary.state === "running" || existing.summary.state === "awaiting_review")
+			isLiveTaskSessionState(existing.summary.state)
 		) {
 			return cloneSummary(existing.summary);
 		}

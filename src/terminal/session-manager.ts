@@ -6,10 +6,10 @@ import type {
 	RuntimeTaskHookActivity,
 	RuntimeTaskImage,
 	RuntimeTaskSessionReviewReason,
-	RuntimeTaskSessionState,
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core/api-contract";
+import { isLiveTaskSessionState } from "../core/task-session-state";
 import {
 	type AgentAdapterLaunchInput,
 	type AgentExitReviewActivityResolver,
@@ -149,10 +149,6 @@ function updateSummary(entry: SessionEntry, patch: Partial<RuntimeTaskSessionSum
 		updatedAt: now(),
 	};
 	return entry.summary;
-}
-
-function isActiveState(state: RuntimeTaskSessionState): boolean {
-	return state === "running" || state === "awaiting_review";
 }
 
 function cloneStartTaskSessionRequest(request: StartTaskSessionRequest): StartTaskSessionRequest {
@@ -344,7 +340,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 			kind: "task",
 			request: cloneStartTaskSessionRequest(request),
 		};
-		if (entry.active && isActiveState(entry.summary.state)) {
+		// A live session already owns the worktree: return its summary instead of
+		// spawning a second agent into the same checkout.
+		if (entry.active && isLiveTaskSessionState(entry.summary.state)) {
 			return cloneSummary(entry.summary);
 		}
 
@@ -789,7 +787,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (!entry) {
 			return null;
 		}
-		if (entry.active || !isActiveState(entry.summary.state)) {
+		if (entry.active || !isLiveTaskSessionState(entry.summary.state)) {
 			return cloneSummary(entry.summary);
 		}
 

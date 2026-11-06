@@ -17,6 +17,7 @@ import {
 	parseWorktreeDeleteRequest,
 	parseWorktreeEnsureRequest,
 } from "../core/api-validation";
+import { isLiveTaskSessionSummary } from "../core/task-session-state";
 import { saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import {
@@ -89,10 +90,9 @@ function normalizeRequiredTaskWorkspaceScopeInput(input: {
 	};
 }
 
-function isActiveTaskSessionState(summary: RuntimeTaskSessionSummary | null): boolean {
-	return summary?.state === "running" || summary?.state === "awaiting_review";
-}
-
+// Task-context variant of `selectPreferredTaskSessionSummary`: same liveness rule, but an
+// exact `updatedAt` tie is broken toward the native-chat summary rather than toward the
+// second argument, because a PTY entry for a native-chat task is always the stale one.
 function selectLastTurnSummary(
 	terminalSummary: RuntimeTaskSessionSummary | null,
 	clineSummary: RuntimeTaskSessionSummary | null,
@@ -103,8 +103,8 @@ function selectLastTurnSummary(
 	if (!clineSummary) {
 		return terminalSummary;
 	}
-	const terminalIsActive = isActiveTaskSessionState(terminalSummary);
-	const clineIsActive = isActiveTaskSessionState(clineSummary);
+	const terminalIsActive = isLiveTaskSessionSummary(terminalSummary);
+	const clineIsActive = isLiveTaskSessionSummary(clineSummary);
 	if (terminalIsActive !== clineIsActive) {
 		return clineIsActive ? clineSummary : terminalSummary;
 	}

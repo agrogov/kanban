@@ -23,6 +23,7 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core/api-contract";
+import { isLiveTaskSessionState } from "../core/task-session-state";
 import { getRuntimeHomePath } from "../state/workspace-state";
 import type { NativeChatBackend, StartNativeChatSessionRequest } from "./chat-backend";
 
@@ -97,11 +98,13 @@ export abstract class NativeChatSessionService implements NativeChatBackend {
 	async startTaskSession(request: StartNativeChatSessionRequest): Promise<RuntimeTaskSessionSummary> {
 		const existing = this.repository.getTaskEntry(request.taskId);
 		const hasPrompt = request.prompt.trim().length > 0 || (request.images?.length ?? 0) > 0;
+		// A live session already owns the worktree, so a start request is a no-op that
+		// returns the existing summary instead of launching a second agent into it.
 		if (
 			!request.resumeFromTrash &&
 			!request.resumeFromPersistence &&
 			existing &&
-			(existing.summary.state === "running" || existing.summary.state === "awaiting_review")
+			isLiveTaskSessionState(existing.summary.state)
 		) {
 			return cloneSummary(existing.summary);
 		}

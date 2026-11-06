@@ -47,6 +47,7 @@ import {
 import { listChatAgentModels } from "../core/chat-agent-models";
 import { isHomeAgentSessionId } from "../core/home-agent-session";
 import { parseRuntimeClineReasoningEffort } from "../core/task-agent-settings";
+import { isLiveTaskSessionSummary } from "../core/task-session-state";
 import { resolveTaskTitle } from "../core/task-title.js";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import { openInBrowser } from "../server/browser";
@@ -55,16 +56,6 @@ import type { TerminalSessionManager } from "../terminal/session-manager";
 import { resolveTaskCwd } from "../workspace/task-worktree";
 import { captureTaskTurnCheckpoint } from "../workspace/turn-checkpoints";
 import type { RuntimeTrpcContext, RuntimeTrpcWorkspaceScope } from "./app-router";
-
-/**
- * A start request for a session that is already live is a no-op in both backends
- * (they return the existing summary), so checkpoint capture must be skipped —
- * otherwise the mid-turn worktree becomes "latest turn" and the real turn-start
- * baseline is displaced (and later pruned).
- */
-function isLiveSessionSummary(summary: { state: string } | null | undefined): boolean {
-	return summary?.state === "running" || summary?.state === "awaiting_review";
-}
 
 export interface CreateRuntimeApiDependencies {
 	getActiveWorkspaceId: () => string | null;
@@ -297,7 +288,11 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 					});
 
 					let nextSummary = summary;
-					if (shouldCaptureTurnCheckpoint && !isLiveSessionSummary(previousClineSummary)) {
+					// A start request for an already-live session is a no-op in every backend (it
+					// returns the existing summary), so checkpoint capture must be skipped for it —
+					// otherwise the mid-turn worktree becomes "latest turn" and the real turn-start
+					// baseline is displaced (and later pruned).
+					if (shouldCaptureTurnCheckpoint && !isLiveTaskSessionSummary(previousClineSummary)) {
 						try {
 							const nextTurn = (summary.latestTurnCheckpoint?.turn ?? 0) + 1;
 							const checkpoint = await captureTaskTurnCheckpoint({
@@ -348,7 +343,8 @@ export function createRuntimeApi(deps: CreateRuntimeApiDependencies): RuntimeTrp
 				});
 
 				let nextSummary = summary;
-				if (shouldCaptureTurnCheckpoint && !isLiveSessionSummary(previousTerminalSummary)) {
+				// Same rule as the native-chat path above: no checkpoint for a no-op start.
+				if (shouldCaptureTurnCheckpoint && !isLiveTaskSessionSummary(previousTerminalSummary)) {
 					try {
 						const nextTurn = (summary.latestTurnCheckpoint?.turn ?? 0) + 1;
 						const checkpoint = await captureTaskTurnCheckpoint({
