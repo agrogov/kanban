@@ -1386,7 +1386,13 @@ export const runtimeHookIngestResponseSchema = z.object({
 });
 export type RuntimeHookIngestResponse = z.infer<typeof runtimeHookIngestResponseSchema>;
 
-export const runtimeProjectStatsRangeDaysSchema = z.union([z.literal(7), z.literal(30), z.literal(90), z.literal(0)]);
+export const runtimeProjectStatsRangeDaysSchema = z.union([
+	z.literal(1),
+	z.literal(7),
+	z.literal(30),
+	z.literal(90),
+	z.literal(0),
+]);
 export type RuntimeProjectStatsRangeDays = z.infer<typeof runtimeProjectStatsRangeDaysSchema>;
 
 export const runtimeProjectStatsRequestSchema = z.object({

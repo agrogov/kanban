@@ -141,6 +141,26 @@ function topGroups(
 	return top;
 }
 
+// Hour bucket key `YYYY-MM-DDTHH` (local time), used by the single-day "Today" range.
+function hourKey(ts: number): string {
+	return `${dateKey(ts)}T${String(new Date(ts).getHours()).padStart(2, "0")}`;
+}
+
+// "Today" (rangeDays === 1) buckets by local hour instead of day: one key per hour from
+// midnight through the current hour.
+function hourSeriesRange(now: number): string[] {
+	const keys: string[] = [];
+	const cursor = new Date(startOfDay(now));
+	while (cursor.getTime() <= now) {
+		const key = hourKey(cursor.getTime());
+		if (keys[keys.length - 1] !== key) {
+			keys.push(key);
+		}
+		cursor.setHours(cursor.getHours() + 1);
+	}
+	return keys;
+}
+
 function daySeriesRange(rangeDays: RuntimeProjectStatsRangeDays, rows: UsageLedgerRow[], now: number): string[] {
 	let start: number;
 	if (rangeDays > 0) {
@@ -186,7 +206,9 @@ export async function loadProjectStats(
 	const [rows, workspaceState] = await Promise.all([deps.readRows(workspaceId), deps.loadWorkspaceState(workspaceId)]);
 	const windowedRows = rows.filter((row) => row.ts >= from);
 
-	const dayKeys = daySeriesRange(rangeDays, windowedRows, now);
+	const isHourly = rangeDays === 1;
+	const bucketKey = isHourly ? hourKey : dateKey;
+	const dayKeys = isHourly ? hourSeriesRange(now) : daySeriesRange(rangeDays, windowedRows, now);
 	const usageByDay = new Map<string, Accumulator>();
 	for (const key of dayKeys) {
 		usageByDay.set(key, createAccumulator());
@@ -200,7 +222,7 @@ export async function loadProjectStats(
 		addRow(totals, row);
 		steps.value += Math.max(0, row.steps);
 		taskIds.add(row.taskId);
-		const day = usageByDay.get(dateKey(row.ts));
+		const day = usageByDay.get(bucketKey(row.ts));
 		if (day) {
 			addRow(day, row);
 		}
@@ -253,13 +275,13 @@ export async function loadProjectStats(
 		flowByDay.set(key, { created: 0, completed: 0 });
 	}
 	for (const card of createdInRange) {
-		const bucket = flowByDay.get(dateKey(card.createdAt));
+		const bucket = flowByDay.get(bucketKey(card.createdAt));
 		if (bucket) {
 			bucket.created += 1;
 		}
 	}
 	for (const card of completedCards) {
-		const bucket = flowByDay.get(dateKey(card.updatedAt));
+		const bucket = flowByDay.get(bucketKey(card.updatedAt));
 		if (bucket) {
 			bucket.completed += 1;
 		}

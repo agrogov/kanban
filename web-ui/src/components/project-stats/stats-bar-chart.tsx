@@ -21,6 +21,11 @@ interface StatsBarChartProps {
 }
 
 function axisLabel(dateKey: string): string {
+	// Hourly buckets (the "Today" range) look like `YYYY-MM-DDTHH`.
+	const hour = dateKey.split("T")[1];
+	if (hour !== undefined) {
+		return `${hour}:00`;
+	}
 	const [, month, day] = dateKey.split("-").map(Number);
 	if (!month || !day) {
 		return dateKey;

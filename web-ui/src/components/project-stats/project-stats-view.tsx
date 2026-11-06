@@ -17,6 +17,7 @@ import type {
 import { formatCompactTokens, formatCostUsd, formatDurationMs, formatPercent } from "@/utils/stats-format";
 
 const RANGE_OPTIONS: Array<{ days: RuntimeProjectStatsRangeDays; label: string }> = [
+	{ days: 1, label: "Today" },
 	{ days: 7, label: "7d" },
 	{ days: 30, label: "30d" },
 	{ days: 90, label: "90d" },
@@ -115,6 +116,7 @@ export function ProjectStatsView({
 		}
 		return map;
 	}, [usage]);
+	const bucketUnit = rangeDays === 1 ? "hour" : "day";
 	const hasUsageData = Boolean(usage && usage.totals.totalTokens > 0);
 	return (
 		<div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface-0">
@@ -194,7 +196,7 @@ export function ProjectStatsView({
 							<StatsCard label="Tool steps" value={String(usage?.totals.steps ?? 0)} />
 						</div>
 						<div className="flex flex-col gap-2">
-							<SectionTitle>Tokens per day</SectionTitle>
+							<SectionTitle>Tokens per {bucketUnit}</SectionTitle>
 							<div className="rounded-lg border border-border bg-surface-1 p-3">
 								{usage && dailyLabels.length > 0 ? (
 									<StatsBarChart
