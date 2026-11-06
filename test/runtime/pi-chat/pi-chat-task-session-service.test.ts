@@ -186,21 +186,48 @@ describe("selectPiChatModel", () => {
 	];
 
 	it("explains an unconfigured Pi instead of letting the SDK time out", () => {
-		expect(() => selectPiChatModel([], null)).toThrow(/no models configured/i);
-		expect(() => selectPiChatModel([], "anthropic/claude-sonnet-5")).toThrow(/no models configured/i);
+		expect(() => selectPiChatModel([], [], null)).toThrow(/no models configured/i);
+		expect(() => selectPiChatModel([], [], "anthropic/claude-sonnet-5")).toThrow(/no models configured/i);
 	});
 
 	it("returns null so the SDK picks its own default when no model was requested", () => {
-		expect(selectPiChatModel(models, null)).toBeNull();
+		expect(selectPiChatModel(models, models, null)).toBeNull();
 	});
 
 	it("resolves provider/id and bare model ids", () => {
-		expect(selectPiChatModel(models, "openai/gpt-6")).toEqual(models[1]);
-		expect(selectPiChatModel(models, "gpt-6")).toEqual(models[1]);
+		expect(selectPiChatModel(models, models, "openai/gpt-6")).toEqual(models[1]);
+		expect(selectPiChatModel(models, models, "gpt-6")).toEqual(models[1]);
 	});
 
 	it("rejects a model that is not available", () => {
-		expect(() => selectPiChatModel(models, "anthropic/claude-opus-9")).toThrow(/not available/i);
+		expect(() => selectPiChatModel(models, models, "anthropic/claude-opus-9")).toThrow(/not available/i);
+	});
+
+	it("resolves a bare model id against configured providers before credentialless built-ins", () => {
+		const catalog = [
+			{ provider: "openrouter", id: "auto" },
+			{ provider: "ali-cloud-auto", id: "auto" },
+		];
+		const configured = [{ provider: "ali-cloud-auto", id: "auto" }];
+		expect(selectPiChatModel(configured, catalog, "auto")).toEqual(configured[0]);
+	});
+
+	it("still passes explicit qualified requests for credentialless providers to the catalog", () => {
+		const catalog = [
+			{ provider: "openrouter", id: "auto" },
+			{ provider: "ali-cloud-auto", id: "auto" },
+		];
+		const configured = [{ provider: "ali-cloud-auto", id: "auto" }];
+		expect(selectPiChatModel(configured, catalog, "openrouter/auto")).toEqual(catalog[0]);
+	});
+
+	it("applies the same preference when seeding pi's own default model", () => {
+		const catalog = [
+			{ provider: "openrouter", id: "auto" },
+			{ provider: "ali-cloud-auto", id: "auto" },
+		];
+		const configured = [{ provider: "ali-cloud-auto", id: "auto" }];
+		expect(selectPiChatModel(configured, catalog, null, "auto")).toEqual(configured[0]);
 	});
 });
 
@@ -245,7 +272,7 @@ describe("readPiDefaultModel", () => {
 			{ provider: "strata", id: "qwen-flash" },
 			{ provider: "openai", id: "gpt-6" },
 		];
-		expect(selectPiChatModel(models, null, "strata/qwen-flash")).toEqual(models[0]);
-		expect(selectPiChatModel(models, null, "strata/unknown")).toBeNull();
+		expect(selectPiChatModel(models, models, null, "strata/qwen-flash")).toEqual(models[0]);
+		expect(selectPiChatModel(models, models, null, "strata/unknown")).toBeNull();
 	});
 });

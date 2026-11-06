@@ -115,24 +115,28 @@ export function buildPiSessionOptions(
  * availability up front so the chat reports the real problem immediately.
  */
 export function selectPiChatModel<T extends { provider: string; id: string }>(
-	availableModels: readonly T[],
+	configuredModels: readonly T[],
+	allModels: readonly T[],
 	modelId: string | null,
 	fallbackModelId: string | null = null,
 ): T | null {
-	if (availableModels.length === 0) {
-		// `getAvailableSnapshot()` reports built-in providers with credentials only; the
-		// models a `pi` user actually configured live in ~/.pi/agent/models.json. Pass
-		// every configured model here so a custom provider is not mistaken for "Pi is
-		// not signed in".
+	if (allModels.length === 0) {
 		throw new Error(
 			"Pi has no models configured. Add a provider to ~/.pi/agent/models.json (or run the `pi` CLI once) and retry.",
 		);
 	}
-	// Same convention as `pi --model`: "provider/id" or a bare model id.
+	// Same convention as `pi --model`: "provider/id" or a bare model id. Bare ids resolve
+	// against the availability snapshot first (configured providers, custom `models.json`
+	// providers included, credentialless built-ins excluded): the full catalog also holds
+	// built-ins the user never signed into, so `openrouter/auto` would otherwise beat the
+	// user's own `ali-cloud-auto/auto` and fail mid-turn on missing OpenRouter credentials.
+	// Qualified `provider/id` requests still fall through to the catalog, so an explicit
+	// choice reports the SDK's own auth guidance instead of "not available".
+	const matches = (candidate: T, candidateId: string): boolean =>
+		`${candidate.provider}/${candidate.id}` === candidateId || candidate.id === candidateId;
 	const findModel = (candidateId: string): T | undefined =>
-		availableModels.find(
-			(candidate) => `${candidate.provider}/${candidate.id}` === candidateId || candidate.id === candidateId,
-		);
+		configuredModels.find((candidate) => matches(candidate, candidateId)) ??
+		allModels.find((candidate) => matches(candidate, candidateId));
 	if (!modelId) {
 		// No model was requested: honour pi's own default (settings.json) instead of
 		// leaving it to the SDK, which would pick an unrelated built-in model.
@@ -188,13 +192,17 @@ const createSdkSession: CreatePiChatSession = async (settings) => {
 		sessionManager: SessionManager.continueRecent(settings.cwd, settings.sessionDir),
 	};
 	const modelRuntime = await ModelRuntime.create();
-	// `getAllModels()` also lists image/classifier entries; only chat models can be
-	// handed to the session, and custom providers from ~/.pi/agent/models.json are
-	// included here (unlike the credential-filtered availability snapshot).
+	// Only chat models can be handed to the session (`getAllModels()` also lists
+	// image/classifier entries). The availability snapshot keeps exactly the models
+	// whose providers are configured; the full catalog stays as the fallback pool for
+	// explicitly qualified requests.
 	const chatModels: Model<Api>[] = modelRuntime
 		.getAllModels()
 		.filter((candidate): candidate is Model<Api> => isModelType(candidate, "chat"));
-	const model = selectPiChatModel(chatModels, settings.modelId, await readPiDefaultModel());
+	const configuredChatModels: Model<Api>[] = modelRuntime
+		.getAvailableSnapshot()
+		.filter((candidate): candidate is Model<Api> => isModelType(candidate, "chat"));
+	const model = selectPiChatModel(configuredChatModels, chatModels, settings.modelId, await readPiDefaultModel());
 	if (model) {
 		options.modelRuntime = modelRuntime;
 		options.model = model;
