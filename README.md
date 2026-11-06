@@ -70,6 +70,12 @@ When the work looks good, hit **Commit** or **Open PR**. Kanban sends a dynamic 
 ### 7. Keep track with git interface
 Click the branch name in the navbar to open a full git interface to browse commit history, switch branches, fetch, pull, push, and visualize your git all without leaving Kanban. Keep track of everything your agents are doing across branches as work is completed.
 
+## Security and trust model
+
+By default Kanban serves its web UI and runtime API on loopback. The runtime API can start agent sessions, run shell commands (the "open in editor" targets and script shortcuts), and edit your board, so it should be treated like any other powerful local socket: any process that can reach the port can drive Kanban with your user's permissions. Browsers from other origins are blocked by strict Host-header and Origin checks, but non-browser clients are trusted because the machine is already yours. Keep the port private on shared or remote machines.
+
+When you expose Kanban beyond loopback (`--host`), turn on the built-in passcode: visitors get a login gate, sessions last 24 hours, and repeated failures lock an IP for 30 seconds. Use `--no-passcode` only when something in front of Kanban already handles authentication. The CLI authenticates with an internal bearer token; processes launched for a task agent receive a reduced-scope hook token that can only report hook events for that agent's own workspace, so code running inside an agent session cannot command the rest of the runtime.
+
 ---
 
 [Apache 2.0 © 2026 Cline Bot Inc.](./LICENSE)
