@@ -458,15 +458,31 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				return;
 			}
 
-			const asset = await readAsset(webUiDir, pathname);
-			res.writeHead(200, {
-				"Content-Type": asset.contentType,
-				"Cache-Control": "no-store",
-			});
-			res.end(asset.content);
-		} catch {
-			res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-			res.end("Not Found");
+			try {
+				const asset = await readAsset(webUiDir, pathname);
+				res.writeHead(200, {
+					"Content-Type": asset.contentType,
+					"Cache-Control": "no-store",
+				});
+				res.end(asset.content);
+			} catch {
+				res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+				res.end("Not Found");
+			}
+		} catch (error) {
+			// Unexpected failures are server errors, not "Not Found": masking them as 404s
+			// hid broken tRPC context setup and workspace loads during debugging.
+			const message = error instanceof Error ? error.message : String(error);
+			deps.warn(`Unhandled runtime server error for ${req.method} ${req.url ?? ""}: ${message}`);
+			if (!res.headersSent) {
+				res.writeHead(500, {
+					"Content-Type": "application/json; charset=utf-8",
+					"Cache-Control": "no-store",
+				});
+				res.end(JSON.stringify({ error: "Internal server error." }));
+			} else {
+				res.end();
+			}
 		}
 	};
 	const server = tlsConfig
