@@ -69,7 +69,26 @@ interface LiveSession {
 	reducerState: PiReducerState;
 }
 
-const THINKING_LEVELS: ReadonlySet<string> = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+/**
+ * Thinking levels Pi accepts, in the order the UI should offer them.
+ *
+ * Declared as a record over the SDK's own `ThinkingLevel` union so the compiler fails when
+ * Pi adds, removes or renames a level. The UI reads this list through `getChatAgentModels`
+ * instead of keeping its own copy, which is how the two used to drift apart.
+ */
+const PI_THINKING_LEVEL_FLAGS = {
+	off: true,
+	minimal: true,
+	low: true,
+	medium: true,
+	high: true,
+	xhigh: true,
+	max: true,
+} satisfies Record<ThinkingLevel, true>;
+
+export const PI_CHAT_THINKING_LEVELS: readonly string[] = Object.keys(PI_THINKING_LEVEL_FLAGS);
+
+const THINKING_LEVELS: ReadonlySet<string> = new Set(PI_CHAT_THINKING_LEVELS);
 /** Plan mode: Pi has no permission modes, so restrict it to its read-only tools. */
 const PLAN_MODE_TOOLS = ["read", "grep", "find", "ls"];
 

@@ -4,11 +4,13 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+	listChatAgentEffortLevels,
 	listChatAgentModels,
 	listPiConfiguredModels,
 	parseClaudeSettingsModel,
 	parseCodexConfigModel,
 } from "../../../src/core/chat-agent-models";
+import { buildPiSessionOptions } from "../../../src/pi-chat/pi-chat-task-session-service";
 
 const dirs: string[] = [];
 
@@ -80,5 +82,52 @@ describe("claude/codex models", () => {
 		const codex = await listChatAgentModels("codex-chat", { piAgentDir: home, homeDir: home });
 		expect(codex.source).toBe("none");
 		expect(codex.error).toMatch(/config\.toml/);
+	});
+});
+
+describe("effort vocabulary", () => {
+	it("serves each agent's own levels, including the ones a hand-copied list dropped", async () => {
+		const home = await makeHome({
+			".codex/config.toml": 'model = "gpt-5-codex"\n',
+			".claude/settings.json": JSON.stringify({ model: "claude-sonnet-5-5" }),
+		});
+		const piDir = await makeHome({
+			"models.json": JSON.stringify({ providers: { strata: { models: [{ id: "qwen-flash" }] } } }),
+		});
+
+		const pi = await listChatAgentModels("pi-chat", { piAgentDir: piDir, homeDir: home });
+		const codex = await listChatAgentModels("codex-chat", { piAgentDir: home, homeDir: home });
+		const claude = await listChatAgentModels("claude-chat", { piAgentDir: home, homeDir: home });
+
+		expect(pi.effortLevels).toEqual(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+		expect(codex.effortLevels).toEqual(["minimal", "low", "medium", "high", "xhigh", "max", "ultra", "persistent"]);
+		expect(claude.effortLevels).toEqual(["low", "medium", "high", "xhigh", "max"]);
+	});
+
+	it("reports no levels for an agent that takes no effort override", async () => {
+		expect(listChatAgentEffortLevels("claude")).toEqual([]);
+		expect(listChatAgentEffortLevels(null)).toEqual([]);
+	});
+
+	it("offers levels even when the agent has no model catalog", async () => {
+		const empty = await makeHome({});
+		const response = await listChatAgentModels("pi-chat", { piAgentDir: empty, homeDir: empty });
+		expect(response.source).toBe("none");
+		expect(response.effortLevels).toContain("max");
+	});
+
+	it("offers only levels the backend actually applies at launch", () => {
+		// The picker list is decorative if the launch-time validator rejects an entry, so check
+		// every offered level survives `buildPiSessionOptions` rather than being dropped.
+		for (const level of listChatAgentEffortLevels("pi-chat")) {
+			const options = buildPiSessionOptions({
+				cwd: "/tmp/worktree",
+				sessionDir: "/tmp/session",
+				modelId: null,
+				reasoningEffort: level,
+				planMode: false,
+			});
+			expect(options.thinkingLevel, `pi-chat drops the offered level "${level}"`).toBe(level);
+		}
 	});
 });

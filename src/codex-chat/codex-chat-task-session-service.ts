@@ -65,16 +65,27 @@ interface ThreadSettings {
 	planMode: boolean;
 }
 
-const EFFORT_LEVELS: ReadonlySet<string> = new Set([
-	"minimal",
-	"low",
-	"medium",
-	"high",
-	"xhigh",
-	"max",
-	"ultra",
-	"persistent",
-]);
+/**
+ * Reasoning efforts Codex accepts, in the order the UI should offer them.
+ *
+ * Declared as a record over the SDK's own `ModelReasoningEffort` union so the compiler fails
+ * when Codex adds, removes or renames a level. The UI reads this list through
+ * `getChatAgentModels` instead of keeping its own copy.
+ */
+const CODEX_EFFORT_LEVEL_FLAGS = {
+	minimal: true,
+	low: true,
+	medium: true,
+	high: true,
+	xhigh: true,
+	max: true,
+	ultra: true,
+	persistent: true,
+} satisfies Record<ModelReasoningEffort, true>;
+
+export const CODEX_CHAT_EFFORT_LEVELS: readonly string[] = Object.keys(CODEX_EFFORT_LEVEL_FLAGS);
+
+const EFFORT_LEVELS: ReadonlySet<string> = new Set(CODEX_CHAT_EFFORT_LEVELS);
 
 function resolveSandboxMode(settings: ThreadSettings): SandboxMode {
 	if (settings.planMode) {

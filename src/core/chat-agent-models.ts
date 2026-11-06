@@ -2,7 +2,9 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { readPiDefaultModel } from "../pi-chat/pi-chat-task-session-service";
+import { CLAUDE_CHAT_EFFORT_LEVELS } from "../claude-chat/claude-chat-task-session-service";
+import { CODEX_CHAT_EFFORT_LEVELS } from "../codex-chat/codex-chat-task-session-service";
+import { PI_CHAT_THINKING_LEVELS, readPiDefaultModel } from "../pi-chat/pi-chat-task-session-service";
 import type { RuntimeAgentId } from "./api-contract";
 
 // Model catalogs for the native chat agents.
@@ -23,6 +25,11 @@ export interface ChatAgentModelsResponse {
 	agentId: RuntimeAgentId | null;
 	source: "config" | "none";
 	models: ChatAgentModelOption[];
+	/**
+	 * Reasoning-effort vocabulary the agent's own runtime accepts, in picker order.
+	 * Sourced from each backend's SDK-derived list so the UI cannot drift from it.
+	 */
+	effortLevels: string[];
 	defaultModelId?: string | null;
 	error?: string;
 }
@@ -88,12 +95,38 @@ export function parseClaudeSettingsModel(contents: string | null): string | null
 	return null;
 }
 
+/** Effort levels an agent accepts, straight from the backend that validates them at launch. */
+export function listChatAgentEffortLevels(agentId: RuntimeAgentId | null | undefined): string[] {
+	switch (agentId) {
+		case "pi-chat":
+			return [...PI_CHAT_THINKING_LEVELS];
+		case "codex-chat":
+			return [...CODEX_CHAT_EFFORT_LEVELS];
+		case "claude-chat":
+			return [...CLAUDE_CHAT_EFFORT_LEVELS];
+		default:
+			return [];
+	}
+}
+
 /** Enumerate an agent's selectable models from its own configuration. */
 export async function listChatAgentModels(
 	agentId: RuntimeAgentId | null | undefined,
 	options: { piAgentDir: string; homeDir?: string },
 ): Promise<ChatAgentModelsResponse> {
-	const home = options.homeDir ?? homedir();
+	const effortLevels = listChatAgentEffortLevels(agentId);
+	const resolved = await resolveChatAgentModels(agentId, {
+		piAgentDir: options.piAgentDir,
+		homeDir: options.homeDir ?? homedir(),
+	});
+	return { ...resolved, effortLevels };
+}
+
+async function resolveChatAgentModels(
+	agentId: RuntimeAgentId | null | undefined,
+	options: { piAgentDir: string; homeDir: string },
+): Promise<Omit<ChatAgentModelsResponse, "effortLevels">> {
+	const home = options.homeDir;
 
 	if (agentId === "pi-chat") {
 		const raw = await readTextFile(join(options.piAgentDir, "models.json"));

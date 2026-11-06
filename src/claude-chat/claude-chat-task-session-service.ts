@@ -55,7 +55,27 @@ interface LaunchSettings {
 	binary: string | null;
 }
 
-const EFFORT_LEVELS: ReadonlySet<string> = new Set(["low", "medium", "high", "xhigh", "max"]);
+/** The named effort levels of the Claude Agent SDK (`Options["effort"]` also allows an integer). */
+type ClaudeEffortLevel = Extract<NonNullable<Options["effort"]>, string>;
+
+/**
+ * Reasoning efforts Claude Code accepts, in the order the UI should offer them.
+ *
+ * Declared as a record over the SDK's own effort union so the compiler fails when the SDK
+ * adds, removes or renames a level. The UI reads this list through `getChatAgentModels`
+ * instead of keeping its own copy.
+ */
+const CLAUDE_EFFORT_LEVEL_FLAGS = {
+	low: true,
+	medium: true,
+	high: true,
+	xhigh: true,
+	max: true,
+} satisfies Record<ClaudeEffortLevel, true>;
+
+export const CLAUDE_CHAT_EFFORT_LEVELS: readonly string[] = Object.keys(CLAUDE_EFFORT_LEVEL_FLAGS);
+
+const EFFORT_LEVELS: ReadonlySet<string> = new Set(CLAUDE_CHAT_EFFORT_LEVELS);
 
 export function buildClaudeQueryOptions(settings: LaunchSettings): Options {
 	const options: Options = {

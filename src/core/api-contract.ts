@@ -752,6 +752,11 @@ export const runtimeChatAgentModelsResponseSchema = z.object({
 	agentId: runtimeAgentIdSchema.nullable(),
 	source: z.enum(["config", "none"]),
 	models: z.array(runtimeChatAgentModelSchema),
+	/**
+	 * Reasoning-effort vocabulary the agent's own runtime accepts, in picker order.
+	 * Each chat backend derives it from its SDK's level union, so the UI never keeps a copy.
+	 */
+	effortLevels: z.array(z.string()),
 	/** Id of the model the agent's own CLI would use; the picker seeds with it. */
 	defaultModelId: z.string().nullable().optional(),
 	error: z.string().optional(),
