@@ -18,6 +18,7 @@ import {
 	parseWorktreeEnsureRequest,
 } from "../core/api-validation";
 import { isLiveTaskSessionSummary } from "../core/task-session-state";
+import { loadProjectStats } from "../server/project-stats";
 import { saveWorkspaceState, WorkspaceStateConflictError } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import {
@@ -353,6 +354,9 @@ export function createWorkspaceApi(deps: CreateWorkspaceApiDependencies): Runtim
 		},
 		loadState: async (workspaceScope) => {
 			return await deps.buildWorkspaceStateSnapshot(workspaceScope.workspaceId, workspaceScope.workspacePath);
+		},
+		loadProjectStats: async (workspaceScope, input) => {
+			return await loadProjectStats(workspaceScope.workspaceId, input.rangeDays ?? 30);
 		},
 		notifyStateUpdated: async (workspaceScope) => {
 			void deps.broadcastRuntimeWorkspaceStateUpdated(workspaceScope.workspaceId, workspaceScope.workspacePath);

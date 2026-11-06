@@ -5,6 +5,7 @@ import {
 	ArrowLeft,
 	ArrowUp,
 	Bug,
+	ChartColumnBig,
 	Check,
 	ChevronDown,
 	CircleArrowDown,
@@ -386,6 +387,8 @@ export function TopBar({
 	onToggleGitHistory,
 	isGitHistoryOpen,
 	onOpenSettings,
+	onToggleProjectStats,
+	isProjectStatsOpen,
 	showDebugButton,
 	onOpenDebugDialog,
 	shortcuts,
@@ -421,6 +424,8 @@ export function TopBar({
 	onToggleGitHistory?: () => void;
 	isGitHistoryOpen?: boolean;
 	onOpenSettings?: (section?: SettingsSection) => void;
+	onToggleProjectStats?: () => void;
+	isProjectStatsOpen?: boolean;
 	showDebugButton?: boolean;
 	onOpenDebugDialog?: () => void;
 	shortcuts?: RuntimeProjectShortcut[];
@@ -771,6 +776,19 @@ export function TopBar({
 								/>
 							) : null}
 						</>
+					) : null}
+
+					{/* Statistics: project usage and board flow report. */}
+					{onToggleProjectStats && !hideProjectDependentActions ? (
+						<Button
+							variant={isProjectStatsOpen ? "primary" : "ghost"}
+							size="sm"
+							icon={<ChartColumnBig size={16} />}
+							onClick={onToggleProjectStats}
+							aria-label="Project statistics"
+							title="Project statistics"
+							className={cn(isProjectStatsOpen ? "ring-1 ring-accent" : "", isMobile && MOBILE_TOUCH_TARGET)}
+						/>
 					) : null}
 
 					{/* Settings: always visible */}

@@ -24,6 +24,7 @@ import type {
 	RuntimeTaskTurnCheckpoint,
 } from "../core/api-contract";
 import { isLiveTaskSessionState } from "../core/task-session-state";
+import { applyTaskSessionUsageUpdate, type TaskSessionUsageUpdate } from "../core/task-session-usage";
 import { getRuntimeHomePath } from "../state/workspace-state";
 import type { NativeChatBackend, StartNativeChatSessionRequest } from "./chat-backend";
 
@@ -218,6 +219,7 @@ export abstract class NativeChatSessionService implements NativeChatBackend {
 		entry: ClineTaskSessionEntry,
 		isError: boolean,
 		resultText: string | null,
+		extraUsage?: TaskSessionUsageUpdate,
 	): void {
 		if (isError) {
 			const message = resultText?.trim() || `${this.identity.displayName} reported an error.`;
@@ -231,6 +233,7 @@ export abstract class NativeChatSessionService implements NativeChatBackend {
 				reviewReason: isError ? "error" : "hook",
 				lastOutputAt: now(),
 				lastHookAt: now(),
+				usage: applyTaskSessionUsageUpdate(entry.summary.usage, { turns: 1, ...extraUsage }, now()),
 				warningMessage: isError ? (resultText?.trim() ?? null) : null,
 				latestHookActivity: {
 					activityText: isError ? "Turn failed" : "Turn complete",
@@ -448,6 +451,13 @@ export abstract class NativeChatSessionService implements NativeChatBackend {
 
 	protected emitSummary(summary: RuntimeTaskSessionSummary): void {
 		this.repository.emitSummary(summary);
+	}
+
+	/** Fold a backend usage delta into the entry summary and broadcast it. */
+	protected applyUsageUpdate(entry: ClineTaskSessionEntry, update: TaskSessionUsageUpdate): void {
+		this.emitSummary(
+			updateSummary(entry, { usage: applyTaskSessionUsageUpdate(entry.summary.usage, update, now()) }),
+		);
 	}
 
 	private createEntry(

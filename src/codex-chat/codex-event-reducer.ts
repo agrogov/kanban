@@ -13,6 +13,7 @@ import {
 	startToolCallMessage,
 	updateMessageInEntry,
 } from "../cline-sdk/cline-session-state";
+import type { TaskSessionUsageUpdate } from "../core/task-session-usage";
 
 export interface CodexReducerState {
 	/** Chat message id per Codex item id, for items rendered as one updatable message. */
@@ -20,10 +21,12 @@ export interface CodexReducerState {
 	/** Tool-card item ids whose card is already open. */
 	openToolItemIds: Set<string>;
 	lastAgentText: string | null;
+	/** Wall-clock time of the current `turn.started`, for the latest-turn token rate. */
+	turnStartedAt: number | null;
 }
 
 export function createCodexReducerState(): CodexReducerState {
-	return { messageIdByItemId: new Map(), openToolItemIds: new Set(), lastAgentText: null };
+	return { messageIdByItemId: new Map(), openToolItemIds: new Set(), lastAgentText: null, turnStartedAt: null };
 }
 
 export interface CodexTurnResult {
@@ -35,6 +38,8 @@ export interface CodexReduction {
 	changedMessages: ClineTaskMessage[];
 	threadId?: string;
 	turnResult?: CodexTurnResult;
+	/** Token deltas for this event, ready for the shared usage accumulator. */
+	usageUpdate?: TaskSessionUsageUpdate;
 }
 
 interface ToolDescription {
@@ -165,6 +170,9 @@ export function reduceCodexEvent(
 		case "thread.started":
 			reduction.threadId = event.thread_id;
 			return reduction;
+		case "turn.started":
+			state.turnStartedAt = Date.now();
+			return reduction;
 		case "item.started":
 		case "item.updated":
 		case "item.completed": {
@@ -177,22 +185,67 @@ export function reduceCodexEvent(
 				changedMessages.push(message);
 			} else {
 				reduceToolItem(taskId, entry, state, item, event.type === "item.completed", changedMessages);
+				if (event.type === "item.completed" && describeTool(item)) {
+					reduction.usageUpdate = { steps: 1 };
+				}
 			}
 			return reduction;
 		}
-		case "turn.completed":
+		case "turn.completed": {
 			clearActiveTurnState(entry);
 			reduction.turnResult = { isError: false, text: state.lastAgentText };
+			reduction.usageUpdate = reduceTurnUsage(state, event.usage, Date.now());
+			state.turnStartedAt = null;
 			return reduction;
+		}
 		case "turn.failed":
 			clearActiveTurnState(entry);
 			reduction.turnResult = { isError: true, text: event.error.message };
+			state.turnStartedAt = null;
 			return reduction;
 		case "error":
 			clearActiveTurnState(entry);
 			reduction.turnResult = { isError: true, text: event.message };
+			state.turnStartedAt = null;
 			return reduction;
 		default:
 			return reduction;
 	}
+}
+
+// Codex reports usage once per turn. `input_tokens` already includes the cached subset, so
+// the fresh-input field is the remainder; the prompt size for the turn is input + cache writes.
+// The SDK does not expose the model context window, so context percentage stays unavailable.
+function reduceTurnUsage(
+	state: CodexReducerState,
+	usage: {
+		input_tokens: number;
+		cached_input_tokens: number;
+		cache_write_input_tokens: number;
+		output_tokens: number;
+		reasoning_output_tokens: number;
+	},
+	completedAt: number,
+): TaskSessionUsageUpdate {
+	const cacheReadTokens = Math.max(0, usage.cached_input_tokens);
+	const inputTokens = Math.max(0, usage.input_tokens - cacheReadTokens);
+	const cacheWriteTokens = Math.max(0, usage.cache_write_input_tokens);
+	const outputTokens = Math.max(0, usage.output_tokens);
+	const update: TaskSessionUsageUpdate = {
+		inputTokens,
+		outputTokens,
+		cacheReadTokens,
+		cacheWriteTokens,
+	};
+	const promptTokens = usage.input_tokens + cacheWriteTokens;
+	if (promptTokens > 0) {
+		update.contextTokens = promptTokens;
+	}
+	if (state.turnStartedAt !== null && outputTokens > 0) {
+		const durationMs = completedAt - state.turnStartedAt;
+		if (durationMs > 0) {
+			update.outputTokensPerSecond = (outputTokens / durationMs) * 1000;
+		}
+	}
+	return update;
 }

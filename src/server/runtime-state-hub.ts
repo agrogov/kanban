@@ -21,6 +21,7 @@ import type {
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract";
 import type { TerminalSessionManager } from "../terminal/session-manager";
+import { createUsageRecorder, type UsageRecorder } from "./usage-recorder";
 import { createWorkspaceMetadataMonitor } from "./workspace-metadata-monitor";
 import type { ResolvedWorkspaceStreamTarget, WorkspaceRegistry } from "./workspace-registry";
 
@@ -72,6 +73,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 	const clineSummaryUnsubscribeByWorkspaceId = new Map<string, () => void>();
 	const clineMessageUnsubscribeByWorkspaceId = new Map<string, () => void>();
 	const clinePreviousSummaryByWorkspaceId = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
+	const usageRecorders = new Map<string, UsageRecorder>();
 	const pendingTaskSessionSummariesByWorkspaceId = new Map<string, Map<string, RuntimeTaskSessionSummary>>();
 	const taskSessionBroadcastTimersByWorkspaceId = new Map<string, NodeJS.Timeout>();
 	const pendingTaskChatMessagesByWorkspaceId = new Map<string, Array<{ taskId: string; message: ClineTaskMessage }>>();
@@ -313,6 +315,7 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 		}
 		clineSummaryUnsubscribeByWorkspaceId.delete(workspaceId);
 		clinePreviousSummaryByWorkspaceId.delete(workspaceId);
+		usageRecorders.delete(workspaceId);
 		const unsubscribeClineMessage = clineMessageUnsubscribeByWorkspaceId.get(workspaceId);
 		if (unsubscribeClineMessage) {
 			try {
@@ -564,13 +567,21 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 			}
 			const previousSummariesByTaskId = new Map<string, RuntimeTaskSessionSummary>();
 			clinePreviousSummaryByWorkspaceId.set(workspaceId, previousSummariesByTaskId);
+			let recorder = usageRecorders.get(workspaceId);
+			if (!recorder) {
+				recorder = createUsageRecorder(workspaceId);
+				usageRecorders.set(workspaceId, recorder);
+			}
+			const activeRecorder = recorder;
 			for (const summary of service.listSummaries()) {
 				previousSummariesByTaskId.set(summary.taskId, summary);
+				activeRecorder.seedSummary(summary);
 				queueTaskSessionSummaryBroadcast(workspaceId, summary);
 			}
 			const unsubscribe = service.onSummary((summary) => {
 				const previousSummary = previousSummariesByTaskId.get(summary.taskId);
 				previousSummariesByTaskId.set(summary.taskId, summary);
+				activeRecorder.recordSummary(summary);
 				queueTaskSessionSummaryBroadcast(workspaceId, summary);
 				const didCheckpointChange =
 					previousSummary?.latestTurnCheckpoint?.commit !== summary.latestTurnCheckpoint?.commit ||
@@ -646,6 +657,10 @@ export function createRuntimeStateHub(deps: CreateRuntimeStateHubDependencies): 
 				}
 			}
 			clineMessageUnsubscribeByWorkspaceId.clear();
+			for (const recorder of usageRecorders.values()) {
+				await recorder.flush().catch(() => undefined);
+			}
+			usageRecorders.clear();
 			workspaceMetadataMonitor.close();
 			for (const client of runtimeStateClients) {
 				try {

@@ -254,9 +254,18 @@ class CodexChatTaskSessionServiceImpl extends NativeChatSessionService {
 				const reduction = reduceCodexEvent(taskId, entry, live.reducerState, event);
 				this.emitMessages(taskId, entry, reduction.changedMessages);
 				this.setSessionId(taskId, reduction.threadId ?? thread.id);
+				if (reduction.usageUpdate && !reduction.turnResult) {
+					this.applyUsageUpdate(entry, reduction.usageUpdate);
+				}
 				if (reduction.turnResult && !turnFinished) {
 					turnFinished = true;
-					this.completeTurn(taskId, entry, reduction.turnResult.isError, reduction.turnResult.text);
+					this.completeTurn(
+						taskId,
+						entry,
+						reduction.turnResult.isError,
+						reduction.turnResult.text,
+						reduction.usageUpdate,
+					);
 				}
 			}
 			if (!turnFinished && !live.stoppedByKanban) {

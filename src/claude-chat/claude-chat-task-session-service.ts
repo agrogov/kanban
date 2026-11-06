@@ -237,7 +237,13 @@ class ClaudeChatTaskSessionServiceImpl extends NativeChatSessionService {
 				return;
 			}
 			live.interruptPending = false;
-			this.completeTurn(taskId, entry, reduction.turnResult.isError, reduction.turnResult.text);
+			this.completeTurn(
+				taskId,
+				entry,
+				reduction.turnResult.isError,
+				reduction.turnResult.text,
+				reduction.usageUpdate,
+			);
 		}
 	}
 

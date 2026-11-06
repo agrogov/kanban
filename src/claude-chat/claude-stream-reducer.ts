@@ -15,12 +15,24 @@ import {
 	startToolCallMessage,
 	updateMessageInEntry,
 } from "../cline-sdk/cline-session-state";
+import {
+	diffUsageTotals,
+	type TaskSessionUsageTotals,
+	type TaskSessionUsageUpdate,
+	tokensPerSecond,
+} from "../core/task-session-usage";
 
 export interface ClaudeStreamReducerState {
 	/** Assistant message ids whose text already arrived through partial stream events. */
 	streamedMessageIds: Set<string>;
 	currentStreamMessageId: string | null;
 	toolNameByToolCallId: Map<string, string>;
+	/** Cumulative usage totals from the most recent `result` event, for turn diffing. */
+	lastUsageTotals: TaskSessionUsageTotals | null;
+	/** Tool cards opened since the last `result` event. */
+	stepsSinceLastResult: number;
+	/** Prompt size (fresh + cached input) of the latest assistant message. */
+	lastContextTokens: number | null;
 }
 
 export function createClaudeStreamReducerState(): ClaudeStreamReducerState {
@@ -28,6 +40,9 @@ export function createClaudeStreamReducerState(): ClaudeStreamReducerState {
 		streamedMessageIds: new Set(),
 		currentStreamMessageId: null,
 		toolNameByToolCallId: new Map(),
+		lastUsageTotals: null,
+		stepsSinceLastResult: 0,
+		lastContextTokens: null,
 	};
 }
 
@@ -47,6 +62,8 @@ export interface ClaudeStreamReduction {
 	changedMessages: ClineTaskMessage[];
 	init?: ClaudeInitInfo;
 	turnResult?: ClaudeTurnResult;
+	/** Token/turn/step deltas for this event, ready for the shared usage accumulator. */
+	usageUpdate?: TaskSessionUsageUpdate;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -58,6 +75,11 @@ function asRecord(value: unknown): JsonRecord | null {
 function readString(record: JsonRecord | null, key: string): string | null {
 	const value = record?.[key];
 	return typeof value === "string" ? value : null;
+}
+
+function readNumber(record: JsonRecord | null, key: string): number | null {
+	const value = record?.[key];
+	return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function readStringArray(record: JsonRecord, key: string): string[] {
@@ -123,11 +145,56 @@ export function reduceClaudeStreamEvent(
 					event.is_error === true || (typeof event.subtype === "string" && event.subtype.startsWith("error")),
 				text: readString(event, "result"),
 			};
+			reduction.usageUpdate = reduceResultUsage(event, state);
 			return reduction;
 		}
 		default:
 			return reduction;
 	}
+}
+
+// Claude Code's `result` event carries cumulative session totals, so each result is diffed
+// against the previously seen totals to produce per-turn increments. `total_cost_usd` is the
+// CLI's own price estimate and is reported whenever the CLI knows the model pricing.
+function reduceResultUsage(event: JsonRecord, state: ClaudeStreamReducerState): TaskSessionUsageUpdate {
+	const usage = asRecord(event.usage);
+	const totals: TaskSessionUsageTotals = {
+		inputTokens: Math.max(0, readNumber(usage, "input_tokens") ?? 0),
+		outputTokens: Math.max(0, readNumber(usage, "output_tokens") ?? 0),
+		cacheReadTokens: Math.max(0, readNumber(usage, "cache_read_input_tokens") ?? 0),
+		cacheWriteTokens: Math.max(0, readNumber(usage, "cache_creation_input_tokens") ?? 0),
+		costUsd: readNumber(event, "total_cost_usd"),
+	};
+	const update = diffUsageTotals(state.lastUsageTotals, totals);
+	state.lastUsageTotals = totals;
+	update.steps = state.stepsSinceLastResult;
+	state.stepsSinceLastResult = 0;
+	if (state.lastContextTokens !== null && state.lastContextTokens > 0) {
+		update.contextTokens = state.lastContextTokens;
+	}
+	const contextWindow = readContextWindowFromModelUsage(asRecord(event.modelUsage));
+	if (contextWindow !== null) {
+		update.contextWindowTokens = contextWindow;
+	}
+	const rate = tokensPerSecond(update.outputTokens ?? 0, readNumber(event, "duration_ms") ?? 0);
+	if (rate !== undefined) {
+		update.outputTokensPerSecond = rate;
+	}
+	return update;
+}
+
+function readContextWindowFromModelUsage(modelUsage: JsonRecord | null): number | null {
+	if (!modelUsage) {
+		return null;
+	}
+	for (const entry of Object.values(modelUsage)) {
+		const record = asRecord(entry);
+		const contextWindow = readNumber(record, "contextWindow");
+		if (contextWindow !== null && contextWindow > 0) {
+			return contextWindow;
+		}
+	}
+	return null;
 }
 
 function reduceStreamEvent(
@@ -199,6 +266,7 @@ function startToolUse(
 	if (toolCallId && toolName) {
 		state.toolNameByToolCallId.set(toolCallId, toolName);
 	}
+	state.stepsSinceLastResult += 1;
 	return startToolCallMessage(entry, taskId, {
 		toolName,
 		toolCallId,
@@ -217,6 +285,7 @@ function reduceAssistantMessage(
 	if (!message || !Array.isArray(content)) {
 		return;
 	}
+	trackAssistantContext(state, message);
 	const messageId = readString(message, "id");
 	const alreadyStreamed = messageId !== null && state.streamedMessageIds.has(messageId);
 	for (const rawBlock of content) {
@@ -248,6 +317,22 @@ function reduceAssistantMessage(
 				}
 			}
 		}
+	}
+}
+
+// Anthropic per-call usage: `input_tokens` counts only fresh (uncached) prompt tokens, so
+// fresh + cache read + cache creation is the prompt size of that call.
+function trackAssistantContext(state: ClaudeStreamReducerState, message: JsonRecord): void {
+	const usage = asRecord(message.usage);
+	if (!usage) {
+		return;
+	}
+	const input = Math.max(0, readNumber(usage, "input_tokens") ?? 0);
+	const cacheRead = Math.max(0, readNumber(usage, "cache_read_input_tokens") ?? 0);
+	const cacheWrite = Math.max(0, readNumber(usage, "cache_creation_input_tokens") ?? 0);
+	const prompt = input + cacheRead + cacheWrite;
+	if (prompt > 0) {
+		state.lastContextTokens = prompt;
 	}
 }
 

@@ -3,6 +3,12 @@
 // focused on lifecycle, storage, and task-facing orchestration.
 import type { RuntimeTaskSessionSummary } from "../core/api-contract";
 import {
+	applyTaskSessionUsageUpdate,
+	diffUsageTotals,
+	type TaskSessionUsageTotals,
+	type TaskSessionUsageUpdate,
+} from "../core/task-session-usage";
+import {
 	appendAssistantChunk,
 	appendReasoningChunk,
 	type ClineTaskMessage,
@@ -59,6 +65,91 @@ type RawClineSdkAgentEvent = ClineSdkAgentEvent | (Record<string, unknown> & { t
 
 function asRecord(value: unknown): Record<string, unknown> | null {
 	return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+/** Merge a usage update into the entry summary and return the patch for emitSummary. */
+function usageSummaryPatch(
+	entry: ClineTaskSessionEntry,
+	update: TaskSessionUsageUpdate,
+): Partial<RuntimeTaskSessionSummary> {
+	return { usage: applyTaskSessionUsageUpdate(entry.summary.usage, update, now()) };
+}
+
+function readNumber(record: Record<string, unknown> | null, key: string): number | null {
+	const value = record?.[key];
+	return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readUsageTotals(record: Record<string, unknown> | null): TaskSessionUsageTotals | null {
+	if (!record) {
+		return null;
+	}
+	const inputTokens = readNumber(record, "inputTokens") ?? 0;
+	const outputTokens = readNumber(record, "outputTokens") ?? 0;
+	const cacheReadTokens = readNumber(record, "cacheReadTokens") ?? 0;
+	const cacheWriteTokens = readNumber(record, "cacheWriteTokens") ?? 0;
+	const total = inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens;
+	if (total <= 0) {
+		return null;
+	}
+	return {
+		inputTokens,
+		outputTokens,
+		cacheReadTokens,
+		cacheWriteTokens,
+		costUsd: readNumber(record, "totalCost") ?? readNumber(record, "cost"),
+	};
+}
+
+// Cline hosts report usage in two vocabularies: translated per-request `usage` delta
+// events, or raw `usage-updated`/`run-finished` events carrying cumulative AgentUsage
+// totals. Deltas are exact and take priority once seen; totals are converted to per-event
+// increments against a per-entry baseline, and a baseline drop (SDK restart reporting
+// per-run totals again) counts the new totals once instead of diffing them away.
+function applyClineUsageDeltaEvent(input: ApplyClineSessionEventInput, event: RawClineSdkAgentEvent): void {
+	const record = asRecord(event);
+	const inputTokens = Math.max(0, readNumber(record, "inputTokens") ?? 0);
+	const outputTokens = Math.max(0, readNumber(record, "outputTokens") ?? 0);
+	const cacheReadTokens = Math.max(0, readNumber(record, "cacheReadTokens") ?? 0);
+	const cacheWriteTokens = Math.max(0, readNumber(record, "cacheWriteTokens") ?? 0);
+	const cost = readNumber(record, "cost");
+	const promptTokens = inputTokens + cacheReadTokens + cacheWriteTokens;
+	input.entry.sawDirectUsageDeltas = true;
+	const update: TaskSessionUsageUpdate = { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens };
+	if (promptTokens > 0) {
+		update.contextTokens = promptTokens;
+	}
+	if (cost !== null && cost > 0) {
+		update.costUsd = cost;
+	}
+	emitSummary(input, usageSummaryPatch(input.entry, update));
+}
+
+function applyClineUsageTotals(input: ApplyClineSessionEventInput, record: Record<string, unknown> | null): void {
+	if (input.entry.sawDirectUsageDeltas) {
+		return;
+	}
+	const totals = readUsageTotals(record);
+	if (!totals) {
+		return;
+	}
+	const previous = input.entry.lastReportedUsageTotals ?? null;
+	input.entry.lastReportedUsageTotals = totals;
+	const previousSum = previous
+		? previous.inputTokens + previous.outputTokens + previous.cacheReadTokens + previous.cacheWriteTokens
+		: 0;
+	const currentSum = totals.inputTokens + totals.outputTokens + totals.cacheReadTokens + totals.cacheWriteTokens;
+	const isReset = previous !== null && currentSum < previousSum * 0.5;
+	const update: TaskSessionUsageUpdate = isReset
+		? {
+				inputTokens: totals.inputTokens,
+				outputTokens: totals.outputTokens,
+				cacheReadTokens: totals.cacheReadTokens,
+				cacheWriteTokens: totals.cacheWriteTokens,
+				costUsd: totals.costUsd ?? undefined,
+			}
+		: diffUsageTotals(previous, totals);
+	emitSummary(input, usageSummaryPatch(input.entry, update));
 }
 
 function readAgentEvent(event: unknown): RawClineSdkAgentEvent | null {
@@ -363,8 +454,20 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		return;
 	}
 
+	if (agentEvent?.type === "usage") {
+		applyClineUsageDeltaEvent(input, agentEvent);
+		return;
+	}
+
+	if (agentEvent?.type === "usage-updated") {
+		const eventRecord = asRecord(agentEvent);
+		applyClineUsageTotals(input, asRecord(eventRecord?.usage));
+		return;
+	}
+
 	if (agentEvent?.type === "run-finished") {
 		const result = asRecord(agentEvent.result);
+		applyClineUsageTotals(input, asRecord(result?.usage));
 		const finalText = typeof result?.outputText === "string" ? result.outputText.trim() : "";
 		if (finalText) {
 			const message = setOrCreateAssistantMessage(entry, taskId, finalText);
@@ -387,6 +490,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		const summaryPatch: Partial<RuntimeTaskSessionSummary> = {
 			lastOutputAt: now(),
 			lastHookAt: now(),
+			...usageSummaryPatch(entry, { turns: 1 }),
 			latestHookActivity: {
 				activityText: finalText ? `Final: ${finalText}` : (previousHookActivity?.activityText ?? null),
 				toolName: previousHookActivity?.toolName ?? null,
@@ -414,6 +518,8 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 	}
 
 	if (agentEvent?.type === "done") {
+		const doneEventRecord = asRecord(agentEvent);
+		applyClineUsageTotals(input, asRecord(doneEventRecord?.usage));
 		const finalText = typeof agentEvent.text === "string" ? agentEvent.text.trim() : "";
 		if (finalText) {
 			const message = setOrCreateAssistantMessage(entry, taskId, finalText);
@@ -436,6 +542,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		const summaryPatch: Partial<RuntimeTaskSessionSummary> = {
 			lastOutputAt: now(),
 			lastHookAt: now(),
+			...usageSummaryPatch(entry, { turns: 1 }),
 			latestHookActivity: {
 				activityText: finalText ? `Final: ${finalText}` : (previousHookActivity?.activityText ?? null),
 				toolName: previousHookActivity?.toolName ?? null,
@@ -544,6 +651,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		const summaryPatch: Partial<RuntimeTaskSessionSummary> = {
 			lastOutputAt: now(),
 			lastHookAt: now(),
+			...usageSummaryPatch(entry, { steps: 1 }),
 			latestHookActivity: {
 				activityText: `Using ${formatClineToolCallLabel(toolDisplay.toolName, toolDisplay.inputSummary)}`,
 				toolName: toolDisplay.toolName,
@@ -621,6 +729,7 @@ export function applyClineSessionEvent(input: ApplyClineSessionEventInput): void
 		const summaryPatch: Partial<RuntimeTaskSessionSummary> = {
 			lastOutputAt: now(),
 			lastHookAt: now(),
+			...usageSummaryPatch(entry, { steps: 1 }),
 			latestHookActivity: {
 				activityText: `Using ${formatClineToolCallLabel(toolDisplay.toolName, toolDisplay.inputSummary)}`,
 				toolName: toolDisplay.toolName,

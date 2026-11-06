@@ -2,6 +2,7 @@
 // This module owns the in-memory summary and message shape plus the low-level
 // mutations shared by the event adapter and the message repository.
 import type { RuntimeTaskImage, RuntimeTaskSessionSummary } from "../core/api-contract";
+import type { TaskSessionUsageTotals } from "../core/task-session-usage";
 
 const CLINE_USER_ATTENTION_TOOL_NAMES = new Set(["ask_followup_question", "plan_mode_respond"]);
 
@@ -46,6 +47,13 @@ export interface ClineTaskSessionEntry {
 	activeReasoningMessageId: string | null;
 	toolMessageIdByToolCallId: Map<string, string>;
 	toolInputByToolCallId: Map<string, unknown>;
+	/**
+	 * Cline-only: the last cumulative usage totals reported by the SDK, kept so
+	 * `usage-updated` / `run-finished` events can be turned into per-event deltas.
+	 */
+	lastReportedUsageTotals?: TaskSessionUsageTotals | null;
+	/** Cline-only: set once per-request `usage` delta events are seen for this entry. */
+	sawDirectUsageDeltas?: boolean;
 }
 
 export interface ClineTaskMessage {

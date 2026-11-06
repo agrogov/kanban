@@ -12,19 +12,24 @@ import {
 	setOrCreateReasoningMessage,
 	startToolCallMessage,
 } from "../cline-sdk/cline-session-state";
+import type { TaskSessionUsageUpdate } from "../core/task-session-usage";
 
 export interface PiReducerState {
 	lastAssistantText: string | null;
 	/** Error reported by the last assistant message (Pi surfaces provider failures this way). */
 	lastError: string | null;
+	/** Output tokens counted since the last reset, so the service can derive a turn rate. */
+	turnOutputTokens: number;
 }
 
 export function createPiReducerState(): PiReducerState {
-	return { lastAssistantText: null, lastError: null };
+	return { lastAssistantText: null, lastError: null, turnOutputTokens: 0 };
 }
 
 export interface PiReduction {
 	changedMessages: ClineTaskMessage[];
+	/** Token/step deltas for this event, ready for the shared usage accumulator. */
+	usageUpdate?: TaskSessionUsageUpdate;
 }
 
 interface ContentBlock {
@@ -62,6 +67,7 @@ export function reducePiEvent(
 	event: AgentSessionEvent,
 ): PiReduction {
 	const changed: ClineTaskMessage[] = [];
+	const reduction: PiReduction = { changedMessages: changed };
 	const push = (message: ClineTaskMessage | null) => {
 		if (message) {
 			changed.push(message);
@@ -105,6 +111,26 @@ export function reducePiEvent(
 					state.lastAssistantText = text;
 				}
 				state.lastError = message.stopReason === "error" ? (message.errorMessage ?? "Pi request failed.") : null;
+				// Pi reports per-API-call usage on every assistant message; the fields are
+				// disjoint token kinds, so each message contributes one increment.
+				const usage = message.usage;
+				if (usage) {
+					const inputTokens = Math.max(0, usage.input ?? 0);
+					const outputTokens = Math.max(0, usage.output ?? 0);
+					const cacheReadTokens = Math.max(0, usage.cacheRead ?? 0);
+					const cacheWriteTokens = Math.max(0, usage.cacheWrite ?? 0);
+					const update: TaskSessionUsageUpdate = { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens };
+					state.turnOutputTokens += outputTokens;
+					const promptTokens = inputTokens + cacheReadTokens + cacheWriteTokens;
+					if (promptTokens > 0) {
+						update.contextTokens = promptTokens;
+					}
+					const costTotal = usage.cost?.total;
+					if (typeof costTotal === "number" && costTotal > 0) {
+						update.costUsd = costTotal;
+					}
+					reduction.usageUpdate = update;
+				}
 			}
 			break;
 		}
@@ -128,10 +154,11 @@ export function reducePiEvent(
 					durationMs: event.durationMs ?? null,
 				}),
 			);
+			reduction.usageUpdate = { steps: 1 };
 			break;
 		}
 		default:
 			break;
 	}
-	return { changedMessages: changed };
+	return reduction;
 }

@@ -78,4 +78,53 @@ describe("reducePiEvent", () => {
 		} as unknown as AgentSessionEvent);
 		expect(state.lastError).toBe("nope");
 	});
+
+	it("reports per-message assistant usage as a normalized increment", () => {
+		const entry = createEntry();
+		const state = createPiReducerState();
+		const reduction = reducePiEvent("t1", entry, state, {
+			type: "message_end",
+			message: {
+				role: "assistant",
+				content: [{ type: "text", text: "hi" }],
+				stopReason: "stop",
+				usage: {
+					input: 10,
+					output: 25,
+					cacheRead: 200,
+					cacheWrite: 5,
+					totalTokens: 240,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.012 },
+				},
+			},
+		} as unknown as AgentSessionEvent);
+		expect(reduction.usageUpdate).toMatchObject({
+			inputTokens: 10,
+			outputTokens: 25,
+			cacheReadTokens: 200,
+			cacheWriteTokens: 5,
+			costUsd: 0.012,
+			contextTokens: 215,
+		});
+		expect(state.turnOutputTokens).toBe(25);
+	});
+
+	it("counts one step per finished tool execution", () => {
+		const entry = createEntry();
+		const state = createPiReducerState();
+		reducePiEvent("t1", entry, state, {
+			type: "tool_execution_start",
+			toolCallId: "c1",
+			toolName: "bash",
+			args: { command: "ls" },
+		} as AgentSessionEvent);
+		const reduction = reducePiEvent("t1", entry, state, {
+			type: "tool_execution_end",
+			toolCallId: "c1",
+			toolName: "bash",
+			result: { content: [{ type: "text", text: "ok" }] },
+			isError: false,
+		} as AgentSessionEvent);
+		expect(reduction.usageUpdate).toEqual({ steps: 1 });
+	});
 });

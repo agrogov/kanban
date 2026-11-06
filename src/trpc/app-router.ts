@@ -62,6 +62,8 @@ import type {
 	RuntimeProjectDirectoryPickerResponse,
 	RuntimeProjectRemoveRequest,
 	RuntimeProjectRemoveResponse,
+	RuntimeProjectStatsRequest,
+	RuntimeProjectStatsResponse,
 	RuntimeProjectsResponse,
 	RuntimeRunUpdateResponse,
 	RuntimeShellSessionStartRequest,
@@ -155,6 +157,8 @@ import {
 	runtimeProjectDirectoryPickerResponseSchema,
 	runtimeProjectRemoveRequestSchema,
 	runtimeProjectRemoveResponseSchema,
+	runtimeProjectStatsRequestSchema,
+	runtimeProjectStatsResponseSchema,
 	runtimeProjectsResponseSchema,
 	runtimeRunUpdateResponseSchema,
 	runtimeShellSessionStartRequestSchema,
@@ -353,6 +357,10 @@ export interface RuntimeTrpcContext {
 			input: RuntimeWorkspaceFileSearchRequest,
 		) => Promise<RuntimeWorkspaceFileSearchResponse>;
 		loadState: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeWorkspaceStateResponse>;
+		loadProjectStats: (
+			scope: RuntimeTrpcWorkspaceScope,
+			input: RuntimeProjectStatsRequest,
+		) => Promise<RuntimeProjectStatsResponse>;
 		notifyStateUpdated: (scope: RuntimeTrpcWorkspaceScope) => Promise<RuntimeWorkspaceStateNotifyResponse>;
 		saveState: (
 			scope: RuntimeTrpcWorkspaceScope,
@@ -687,6 +695,12 @@ export const runtimeAppRouter = t.router({
 		getState: workspaceProcedure.output(runtimeWorkspaceStateResponseSchema).query(async ({ ctx }) => {
 			return await ctx.workspaceApi.loadState(ctx.workspaceScope);
 		}),
+		getProjectStats: workspaceProcedure
+			.input(runtimeProjectStatsRequestSchema.optional())
+			.output(runtimeProjectStatsResponseSchema)
+			.query(async ({ ctx, input }) => {
+				return await ctx.workspaceApi.loadProjectStats(ctx.workspaceScope, input ?? { rangeDays: 30 });
+			}),
 		notifyStateUpdated: workspaceProcedure
 			.output(runtimeWorkspaceStateNotifyResponseSchema)
 			.mutation(async ({ ctx }) => {

@@ -108,4 +108,41 @@ describe("reduceCodexEvent", () => {
 		expect(reductions[0]?.turnResult).toEqual({ isError: true, text: "nope" });
 		expect(reductions[1]?.turnResult).toEqual({ isError: true, text: "fatal" });
 	});
+
+	it("maps turn.completed usage to normalized token increments", () => {
+		const { reductions } = run([
+			{ type: "turn.started" },
+			{
+				type: "item.completed",
+				item: {
+					id: "c",
+					type: "command_execution",
+					command: "ls",
+					aggregated_output: "a.txt",
+					exit_code: 0,
+					status: "completed",
+				},
+			},
+			{ type: "item.completed", item: { id: "a", type: "agent_message", text: "done" } },
+			{
+				type: "turn.completed",
+				usage: {
+					input_tokens: 1000,
+					cached_input_tokens: 600,
+					cache_write_input_tokens: 100,
+					output_tokens: 200,
+					reasoning_output_tokens: 50,
+				},
+			},
+		]);
+		expect(reductions[1]?.usageUpdate).toEqual({ steps: 1 });
+		expect(reductions[3]?.usageUpdate).toMatchObject({
+			inputTokens: 400,
+			outputTokens: 200,
+			cacheReadTokens: 600,
+			cacheWriteTokens: 100,
+			contextTokens: 1100,
+		});
+		expect(reductions[3]?.usageUpdate?.turns).toBeUndefined();
+	});
 });

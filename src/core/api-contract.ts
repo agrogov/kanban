@@ -314,6 +314,29 @@ export const runtimeTaskTurnCheckpointSchema = z.object({
 });
 export type RuntimeTaskTurnCheckpoint = z.infer<typeof runtimeTaskTurnCheckpointSchema>;
 
+// Cumulative token/cost usage for one chat session, normalized across the cline,
+// claude-chat, codex-chat, and pi-chat backends. Token fields count prompt tokens
+// that were *not* served from cache in `inputTokens`; cached reads and writes live in
+// their own fields so the UI can compute a cache hit rate.
+export const runtimeTaskSessionUsageSchema = z.object({
+	inputTokens: z.number().int().nonnegative().default(0),
+	outputTokens: z.number().int().nonnegative().default(0),
+	cacheReadTokens: z.number().int().nonnegative().default(0),
+	cacheWriteTokens: z.number().int().nonnegative().default(0),
+	// Only populated when the backend reliably reports USD cost for the session.
+	costUsd: z.number().nonnegative().nullable().default(null),
+	// User prompts processed and tool steps taken during the session.
+	turns: z.number().int().nonnegative().default(0),
+	steps: z.number().int().nonnegative().default(0),
+	// Approximate prompt size of the latest model call and the model context window.
+	contextTokens: z.number().int().nonnegative().nullable().default(null),
+	contextWindowTokens: z.number().int().positive().nullable().default(null),
+	// Output token rate of the latest completed turn, in tokens per second.
+	outputTokensPerSecond: z.number().nonnegative().nullable().default(null),
+	updatedAt: z.number().default(0),
+});
+export type RuntimeTaskSessionUsage = z.infer<typeof runtimeTaskSessionUsageSchema>;
+
 export const runtimeTaskSessionSummarySchema = z.object({
 	taskId: z.string(),
 	state: runtimeTaskSessionStateSchema,
@@ -333,6 +356,7 @@ export const runtimeTaskSessionSummarySchema = z.object({
 	reasoningEffort: z.string().nullable().default(null),
 	latestTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
 	previousTurnCheckpoint: runtimeTaskTurnCheckpointSchema.nullable().optional(),
+	usage: runtimeTaskSessionUsageSchema.nullable().optional(),
 });
 export type RuntimeTaskSessionSummary = z.infer<typeof runtimeTaskSessionSummarySchema>;
 
@@ -1361,3 +1385,92 @@ export const runtimeHookIngestResponseSchema = z.object({
 	error: z.string().optional(),
 });
 export type RuntimeHookIngestResponse = z.infer<typeof runtimeHookIngestResponseSchema>;
+
+export const runtimeProjectStatsRangeDaysSchema = z.union([z.literal(7), z.literal(30), z.literal(90), z.literal(0)]);
+export type RuntimeProjectStatsRangeDays = z.infer<typeof runtimeProjectStatsRangeDaysSchema>;
+
+export const runtimeProjectStatsRequestSchema = z.object({
+	rangeDays: runtimeProjectStatsRangeDaysSchema.default(30),
+});
+export type RuntimeProjectStatsRequest = z.infer<typeof runtimeProjectStatsRequestSchema>;
+
+export const runtimeProjectStatsUsageDaySchema = z.object({
+	// Local calendar day, formatted YYYY-MM-DD.
+	date: z.string(),
+	inputTokens: z.number().int().nonnegative(),
+	outputTokens: z.number().int().nonnegative(),
+	cacheReadTokens: z.number().int().nonnegative(),
+	cacheWriteTokens: z.number().int().nonnegative(),
+	totalTokens: z.number().int().nonnegative(),
+	// Null when no row in the bucket reported a cost.
+	costUsd: z.number().nonnegative().nullable(),
+	turns: z.number().int().nonnegative(),
+});
+export type RuntimeProjectStatsUsageDay = z.infer<typeof runtimeProjectStatsUsageDaySchema>;
+
+export const runtimeProjectStatsUsageGroupSchema = z.object({
+	key: z.string(),
+	label: z.string(),
+	totalTokens: z.number().int().nonnegative(),
+	inputTokens: z.number().int().nonnegative(),
+	outputTokens: z.number().int().nonnegative(),
+	costUsd: z.number().nonnegative().nullable(),
+	turns: z.number().int().nonnegative(),
+	taskCount: z.number().int().nonnegative(),
+});
+export type RuntimeProjectStatsUsageGroup = z.infer<typeof runtimeProjectStatsUsageGroupSchema>;
+
+export const runtimeProjectStatsUsageSectionSchema = z.object({
+	totals: z.object({
+		inputTokens: z.number().int().nonnegative(),
+		outputTokens: z.number().int().nonnegative(),
+		cacheReadTokens: z.number().int().nonnegative(),
+		cacheWriteTokens: z.number().int().nonnegative(),
+		totalTokens: z.number().int().nonnegative(),
+		costUsd: z.number().nonnegative().nullable(),
+		turns: z.number().int().nonnegative(),
+		steps: z.number().int().nonnegative(),
+		taskCount: z.number().int().nonnegative(),
+	}),
+	// Cache reads as a share of all prompt tokens; null when no prompt tokens were used.
+	cacheHitPercent: z.number().min(0).max(100).nullable(),
+	daily: z.array(runtimeProjectStatsUsageDaySchema),
+	byAgent: z.array(runtimeProjectStatsUsageGroupSchema),
+	byModel: z.array(runtimeProjectStatsUsageGroupSchema),
+});
+export type RuntimeProjectStatsUsageSection = z.infer<typeof runtimeProjectStatsUsageSectionSchema>;
+
+export const runtimeProjectStatsFlowDaySchema = z.object({
+	date: z.string(),
+	created: z.number().int().nonnegative(),
+	completed: z.number().int().nonnegative(),
+});
+export type RuntimeProjectStatsFlowDay = z.infer<typeof runtimeProjectStatsFlowDaySchema>;
+
+export const runtimeProjectStatsFlowSectionSchema = z.object({
+	totals: z.object({
+		created: z.number().int().nonnegative(),
+		completed: z.number().int().nonnegative(),
+		// Cards currently in In Progress or Review.
+		wip: z.number().int().nonnegative(),
+		backlog: z.number().int().nonnegative(),
+		activeTasks: z.number().int().nonnegative(),
+		// Done-card lifecycle time (createdAt -> updatedAt), in milliseconds.
+		medianCycleMs: z.number().nonnegative().nullable(),
+		p90CycleMs: z.number().nonnegative().nullable(),
+	}),
+	daily: z.array(runtimeProjectStatsFlowDaySchema),
+});
+export type RuntimeProjectStatsFlowSection = z.infer<typeof runtimeProjectStatsFlowSectionSchema>;
+
+export const runtimeProjectStatsResponseSchema = z.object({
+	ok: z.boolean(),
+	error: z.string().optional(),
+	rangeDays: runtimeProjectStatsRangeDaysSchema,
+	// Epoch ms of the inclusive window start used for aggregation.
+	from: z.number(),
+	to: z.number(),
+	usage: runtimeProjectStatsUsageSectionSchema,
+	flow: runtimeProjectStatsFlowSectionSchema,
+});
+export type RuntimeProjectStatsResponse = z.infer<typeof runtimeProjectStatsResponseSchema>;

@@ -28,6 +28,7 @@ const INDEX_FILENAME = "index.json";
 const BOARD_FILENAME = "board.json";
 const SESSIONS_FILENAME = "sessions.json";
 const META_FILENAME = "meta.json";
+const USAGE_FILENAME = "usage.jsonl";
 const INDEX_VERSION = 1;
 const WORKSPACE_ID_COLLISION_SUFFIX_LENGTH = 4;
 
@@ -188,6 +189,14 @@ function getWorkspaceSessionsPath(workspaceId: string): string {
 
 function getWorkspaceMetaPath(workspaceId: string): string {
 	return join(getWorkspaceDirectoryPath(workspaceId), META_FILENAME);
+}
+
+/**
+ * Append-only per-turn usage ledger (JSONL). Lives inside the workspace state directory so
+ * removing a project (`removeWorkspaceStateFiles`) deletes its usage history in one step.
+ */
+export function getWorkspaceUsagePath(workspaceId: string): string {
+	return join(getWorkspaceDirectoryPath(workspaceId), USAGE_FILENAME);
 }
 
 function getWorkspaceIndexLockRequest(): LockRequest {

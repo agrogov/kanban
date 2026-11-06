@@ -801,4 +801,99 @@ describe("applyClineSessionEvent", () => {
 		expect(result.entry.summary.latestHookActivity?.finalMessage).toBe("Unauthorized");
 		expect(result.entry.activeAssistantMessageId).toBeNull();
 	});
+
+	it("accumulates translated per-request usage deltas into the summary", () => {
+		const entry = createEntry("task-1");
+		applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "usage",
+						inputTokens: 120,
+						outputTokens: 30,
+						cacheReadTokens: 800,
+						cacheWriteTokens: 20,
+						cost: 0.01,
+					},
+				},
+			},
+		});
+		expect(entry.summary.usage).toMatchObject({
+			inputTokens: 120,
+			outputTokens: 30,
+			cacheReadTokens: 800,
+			cacheWriteTokens: 20,
+			costUsd: 0.01,
+			contextTokens: 940,
+		});
+		applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: { type: "usage", inputTokens: 10, outputTokens: 5, cacheReadTokens: 900, cacheWriteTokens: 0 },
+				},
+			},
+		});
+		expect(entry.summary.usage).toMatchObject({ inputTokens: 130, outputTokens: 35, cacheReadTokens: 1700 });
+	});
+
+	it("diffs raw usage-updated totals against the per-entry baseline", () => {
+		const entry = createEntry("task-1");
+		const totalsEvent = (usage: Record<string, number>) => ({
+			type: "agent_event",
+			payload: { sessionId: "session-1", event: { type: "usage-updated", snapshot: runtimeSnapshot(), usage } },
+		});
+		applyEvent({
+			entry,
+			event: totalsEvent({
+				inputTokens: 1000,
+				outputTokens: 100,
+				cacheReadTokens: 2000,
+				cacheWriteTokens: 50,
+				totalCost: 0.2,
+			}),
+		});
+		expect(entry.summary.usage).toMatchObject({
+			inputTokens: 1000,
+			outputTokens: 100,
+			cacheReadTokens: 2000,
+			cacheWriteTokens: 50,
+			costUsd: 0.2,
+		});
+		applyEvent({
+			entry,
+			event: totalsEvent({ inputTokens: 1400, outputTokens: 180, cacheReadTokens: 2000, cacheWriteTokens: 90 }),
+		});
+		expect(entry.summary.usage).toMatchObject({
+			inputTokens: 1400,
+			outputTokens: 180,
+			cacheWriteTokens: 90,
+			costUsd: 0.2,
+		});
+	});
+
+	it("counts a turn when a run finishes", () => {
+		const entry = createEntry("task-1");
+		applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "done",
+						reason: "completed",
+						text: "All set.",
+						usage: { inputTokens: 50, outputTokens: 10 },
+					},
+				},
+			},
+		});
+		expect(entry.summary.usage).toMatchObject({ turns: 1, inputTokens: 50, outputTokens: 10 });
+	});
 });

@@ -22,6 +22,7 @@ import {
 	getClineReasoningEnabledModelIds,
 } from "@/components/detail-panels/cline-model-picker-options";
 import { ClineThinkingIndicator } from "@/components/detail-panels/cline-thinking-indicator";
+import { TaskSessionStatsBar } from "@/components/detail-panels/task-session-stats-bar";
 import type { SearchSelectOption } from "@/components/search-select-dropdown";
 import { Button } from "@/components/ui/button";
 import { Link } from "@/components/ui/link";
@@ -582,6 +583,7 @@ export const ClineAgentChatPanel = React.forwardRef<ClineAgentChatPanelHandle, C
 						attachmentWarningMessage={attachmentWarningMessage}
 						workspaceId={workspaceId}
 					/>
+					<TaskSessionStatsBar usage={summary?.usage} />
 				</div>
 				{showActionFooter ? (
 					<div className="flex flex-col gap-2 px-3 pb-3">

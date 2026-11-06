@@ -114,4 +114,66 @@ describe("reduceClaudeStreamEvent", () => {
 		const failed = streamEvents([{ type: "result", subtype: "error_max_turns" }]);
 		expect(failed.reductions[0]?.turnResult?.isError).toBe(true);
 	});
+
+	it("diffs cumulative result totals into per-turn usage updates", () => {
+		const assistant = {
+			type: "assistant",
+			message: {
+				id: "m1",
+				role: "assistant",
+				content: [{ type: "tool_use", id: "tc1", name: "Bash", input: { command: "ls" } }],
+				usage: { input_tokens: 500, cache_read_input_tokens: 1000, cache_creation_input_tokens: 200 },
+			},
+		};
+		const result = {
+			type: "result",
+			subtype: "success",
+			is_error: false,
+			result: "done",
+			duration_ms: 2000,
+			total_cost_usd: 0.05,
+			num_turns: 1,
+			usage: {
+				input_tokens: 800,
+				output_tokens: 300,
+				cache_read_input_tokens: 4000,
+				cache_creation_input_tokens: 600,
+			},
+			modelUsage: { "claude-sonnet-4-5": { contextWindow: 200000 } },
+		};
+		const { reductions } = streamEvents([assistant, result]);
+		expect(reductions[1]?.usageUpdate).toMatchObject({
+			inputTokens: 800,
+			outputTokens: 300,
+			cacheReadTokens: 4000,
+			cacheWriteTokens: 600,
+			costUsd: 0.05,
+			steps: 1,
+			contextTokens: 1700,
+			contextWindowTokens: 200000,
+			outputTokensPerSecond: 150,
+		});
+
+		// The next result only contributes the growth since the previous one.
+		const entry = createEntry();
+		const state = createClaudeStreamReducerState();
+		reduceClaudeStreamEvent("task-1", entry, state, result);
+		const second = reduceClaudeStreamEvent("task-1", entry, state, {
+			...result,
+			usage: {
+				input_tokens: 900,
+				output_tokens: 340,
+				cache_read_input_tokens: 4000,
+				cache_creation_input_tokens: 650,
+			},
+			total_cost_usd: 0.08,
+		});
+		expect(second.usageUpdate).toMatchObject({
+			inputTokens: 100,
+			outputTokens: 40,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 50,
+			costUsd: 0.03,
+		});
+	});
 });

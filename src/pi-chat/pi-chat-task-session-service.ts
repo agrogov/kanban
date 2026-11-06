@@ -19,6 +19,7 @@ import {
 import type { ClineMessageRepository } from "../cline-sdk/cline-message-repository";
 import { type ClineTaskSessionEntry, updateSummary } from "../cline-sdk/cline-session-state";
 import type { RuntimeTaskImage } from "../core/api-contract";
+import { tokensPerSecond } from "../core/task-session-usage";
 import type { NativeChatBackend } from "../native-chat/chat-backend";
 import { NativeChatSessionService, toErrorMessage } from "../native-chat/native-chat-session-service";
 import { getRuntimeHomePath } from "../state/workspace-state";
@@ -265,6 +266,9 @@ class PiChatTaskSessionServiceImpl extends NativeChatSessionService {
 		live.unsubscribe = session.subscribe((event: AgentSessionEvent) => {
 			const reduction = reducePiEvent(taskId, entry, live.reducerState, event);
 			this.emitMessages(taskId, entry, reduction.changedMessages);
+			if (reduction.usageUpdate) {
+				this.applyUsageUpdate(entry, reduction.usageUpdate);
+			}
 		});
 		return session;
 	}
@@ -294,6 +298,8 @@ class PiChatTaskSessionServiceImpl extends NativeChatSessionService {
 	): Promise<void> {
 		const settings = this.settingsByTaskId.get(taskId);
 		live.reducerState.lastError = null;
+		live.reducerState.turnOutputTokens = 0;
+		const turnStartedAt = Date.now();
 		try {
 			live.session ??= await this.openSession(taskId, entry, live);
 			const isFirstTurn = live.session.messages.length === 0;
@@ -303,7 +309,14 @@ class PiChatTaskSessionServiceImpl extends NativeChatSessionService {
 			});
 			if (!live.stoppedByKanban) {
 				const error = live.reducerState.lastError;
-				this.completeTurn(taskId, entry, error !== null, error ?? live.reducerState.lastAssistantText);
+				const rate = tokensPerSecond(live.reducerState.turnOutputTokens, Date.now() - turnStartedAt);
+				this.completeTurn(
+					taskId,
+					entry,
+					error !== null,
+					error ?? live.reducerState.lastAssistantText,
+					rate !== undefined ? { outputTokensPerSecond: rate } : undefined,
+				);
 			}
 		} catch (error) {
 			if (!live.stoppedByKanban) {

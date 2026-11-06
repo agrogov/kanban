@@ -14,6 +14,8 @@ import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-pa
 import { GitHistoryView } from "@/components/git-history-view";
 import { KanbanBoard } from "@/components/kanban-board";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
+import { ProjectStatsView } from "@/components/project-stats/project-stats-view";
+import { useProjectStatsData } from "@/components/project-stats/use-project-stats-data";
 import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components/runtime-settings-dialog";
 import { StartupOnboardingDialog } from "@/components/startup-onboarding-dialog";
 import { TaskCreateDialog } from "@/components/task-create-dialog";
@@ -89,6 +91,7 @@ export default function App(): ReactElement {
 	const [homeSidebarSection, setHomeSidebarSection] = useState<"projects" | "agent">("projects");
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
 	const [isGitHistoryOpen, setIsGitHistoryOpen] = useState(false);
+	const [isProjectStatsOpen, setIsProjectStatsOpen] = useState(false);
 	const [pendingTaskStartAfterEditId, setPendingTaskStartAfterEditId] = useState<string | null>(null);
 	const taskEditorResetRef = useRef<() => void>(() => {});
 	const lastStreamErrorRef = useRef<string | null>(null);
@@ -555,6 +558,20 @@ export default function App(): ReactElement {
 	const handleCloseGitHistory = useCallback(() => {
 		setIsGitHistoryOpen(false);
 	}, []);
+	const projectStats = useProjectStatsData({ workspaceId: currentProjectId, enabled: isProjectStatsOpen });
+	const handleToggleProjectStats = useCallback(() => {
+		if (hasNoProjects) {
+			return;
+		}
+		const nextOpen = !isProjectStatsOpen;
+		setIsProjectStatsOpen(nextOpen);
+		if (nextOpen) {
+			setIsGitHistoryOpen(false);
+		}
+	}, [hasNoProjects, isProjectStatsOpen]);
+	const handleCloseProjectStats = useCallback(() => {
+		setIsProjectStatsOpen(false);
+	}, []);
 
 	const {
 		handleProgrammaticCardMoveReady,
@@ -874,6 +891,8 @@ export default function App(): ReactElement {
 						isOpeningWorkspace={isOpeningWorkspace}
 						onToggleGitHistory={hasNoProjects ? undefined : handleToggleGitHistory}
 						isGitHistoryOpen={isGitHistoryOpen}
+						onToggleProjectStats={hasNoProjects ? undefined : handleToggleProjectStats}
+						isProjectStatsOpen={isProjectStatsOpen}
 						hideProjectDependentActions={shouldHideProjectDependentTopBarActions}
 					/>
 					<div className="relative flex flex-1 min-h-0 min-w-0 overflow-hidden">
@@ -905,7 +924,9 @@ export default function App(): ReactElement {
 							) : (
 								<div className="flex flex-1 flex-col min-h-0 min-w-0">
 									<div className="flex flex-1 min-h-0 min-w-0">
-										{isGitHistoryOpen ? (
+										{isProjectStatsOpen ? (
+											<ProjectStatsView stats={projectStats} onClose={handleCloseProjectStats} />
+										) : isGitHistoryOpen ? (
 											<GitHistoryView
 												workspaceId={currentProjectId}
 												gitHistory={gitHistory}
