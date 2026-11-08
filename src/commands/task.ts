@@ -30,6 +30,7 @@ import { isLiveTaskSessionSummary, isTerminalTaskSessionState } from "../core/ta
 import { resolveProjectInputPath } from "../projects/project-path";
 import { loadWorkspaceContext, mutateWorkspaceState } from "../state/workspace-state";
 import type { RuntimeAppRouter } from "../trpc/app-router";
+import { describeDoneMoveBlocker, probeTaskLanding } from "../workspace/task-landing-probe";
 
 const LIST_TASK_COLUMNS = ["backlog", "in_progress", "review", "trash"] as const;
 type ListTaskColumn = (typeof LIST_TASK_COLUMNS)[number];
@@ -386,6 +387,7 @@ function formatTaskRecord(
 		autoReviewMode: task.autoReviewMode ?? "commit",
 		...(task.agentId ? { agentId: task.agentId } : {}),
 		...formatTaskAgentSettings(task.agentSettings),
+		...(task.checkResult ? { checkResult: task.checkResult } : {}),
 		createdAt: task.createdAt,
 		updatedAt: task.updatedAt,
 		session: session
@@ -913,7 +915,12 @@ export interface MoveTaskDependencies {
 	ensureRuntimeWorkspace: (workspaceRepoPath: string) => Promise<string>;
 	createRuntimeClient: (workspaceId: string) => ReturnType<typeof createRuntimeTrpcClient>;
 	updateRuntimeWorkspaceState: typeof updateRuntimeWorkspaceState;
-	trashTask: (input: { cwd: string; taskId: string; projectPath?: string }) => Promise<JsonRecord>;
+	trashTask: (input: {
+		cwd: string;
+		taskId: string;
+		projectPath?: string;
+		requireLanded: boolean;
+	}) => Promise<JsonRecord>;
 }
 
 const defaultMoveTaskDependencies: MoveTaskDependencies = {
@@ -931,7 +938,7 @@ const defaultMoveTaskDependencies: MoveTaskDependencies = {
  * live session so no agent keeps writing to a card another agent can now pick up.
  */
 export async function moveTask(
-	input: { cwd: string; taskId: string; column: ListTaskColumn; projectPath?: string },
+	input: { cwd: string; taskId: string; column: ListTaskColumn; projectPath?: string; force?: boolean },
 	dependencies: MoveTaskDependencies = defaultMoveTaskDependencies,
 ): Promise<JsonRecord> {
 	if (input.column === "trash") {
@@ -939,6 +946,7 @@ export async function moveTask(
 			cwd: input.cwd,
 			taskId: input.taskId,
 			projectPath: input.projectPath,
+			requireLanded: input.force !== true,
 		});
 	}
 
@@ -1103,16 +1111,54 @@ async function trashTaskById(input: {
 	};
 }
 
+/** Refuses the whole request before anything moves, so a bulk move never stops half way. */
+export async function assertTasksLanded(
+	state: RuntimeWorkspaceStateResponse,
+	taskIds: string[],
+	workspaceRepoPath: string,
+): Promise<void> {
+	const blockers: string[] = [];
+	for (const taskId of taskIds) {
+		const record = findTaskRecord(state, taskId);
+		if (!record || record.columnId === "trash") {
+			continue;
+		}
+		const probe = await probeTaskLanding({
+			workspacePath: workspaceRepoPath,
+			taskId,
+			baseRef: record.task.baseRef,
+		});
+		const blocker = describeDoneMoveBlocker(record.task, probe);
+		if (blocker) {
+			blockers.push(`Task "${taskId}": ${blocker}.`);
+		}
+	}
+	if (blockers.length > 0) {
+		throw new Error(
+			`Nothing was moved to done.\n${blockers.join("\n")}\n` +
+				"Land the work first, or pass --force to move it anyway. `task trash` discards a task on purpose.",
+		);
+	}
+}
+
 async function trashTask(input: {
 	cwd: string;
 	taskId?: string;
 	column?: ListTaskColumn;
 	projectPath?: string;
+	requireLanded: boolean;
 }): Promise<JsonRecord> {
 	const target = resolveTaskCommandTarget(input, "task done");
 	const workspaceRepoPath = await resolveWorkspaceRepoPath(input.projectPath, input.cwd);
 	const workspaceId = await ensureRuntimeWorkspace(workspaceRepoPath);
 	const runtimeClient = createRuntimeTrpcClient(workspaceId);
+
+	if (input.requireLanded) {
+		const state = await runtimeClient.workspace.getState.query();
+		const taskIds =
+			target.kind === "task" ? [target.taskId] : findTasksInColumn(state, target.column).map(({ task }) => task.id);
+		await assertTasksLanded(state, taskIds, workspaceRepoPath);
+	}
 
 	if (target.kind === "task") {
 		const trashed = await trashTaskById({
@@ -1543,18 +1589,23 @@ export function registerTaskCommand(program: Command): void {
 		},
 	);
 
-	task
-		.command("trash")
-		.alias("done")
-		.description("Move a task or an entire column to done and clean up task workspaces.")
-		.option("--task-id <id>", "Task ID.")
-		.option(
-			"--column <column>",
-			"Column to move to done: backlog | in_progress | review | done. trash is also accepted.",
-			parseListColumn,
-		)
-		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
-		.action(async (options: { taskId?: string; column?: ListTaskColumn; projectPath?: string }) => {
+	const addMoveToDoneOptions = (command: Command): Command =>
+		command
+			.option("--task-id <id>", "Task ID.")
+			.option(
+				"--column <column>",
+				"Column to move to done: backlog | in_progress | review | done. trash is also accepted.",
+				parseListColumn,
+			)
+			.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.");
+
+	addMoveToDoneOptions(
+		task
+			.command("done")
+			.description("Move a task or an entire column to done, refusing work that has not landed on its base ref."),
+	)
+		.option("--force", "Move to done even with unlanded commits, uncommitted changes or a failed check.")
+		.action(async (options: { taskId?: string; column?: ListTaskColumn; projectPath?: string; force?: boolean }) => {
 			await runTaskCommand(
 				async () =>
 					await trashTask({
@@ -1562,9 +1613,27 @@ export function registerTaskCommand(program: Command): void {
 						taskId: options.taskId,
 						column: options.column,
 						projectPath: options.projectPath,
+						requireLanded: options.force !== true,
 					}),
 			);
 		});
+
+	addMoveToDoneOptions(
+		task
+			.command("trash")
+			.description("Discard a task or an entire column: move to done whether or not the work landed."),
+	).action(async (options: { taskId?: string; column?: ListTaskColumn; projectPath?: string }) => {
+		await runTaskCommand(
+			async () =>
+				await trashTask({
+					cwd: process.cwd(),
+					taskId: options.taskId,
+					column: options.column,
+					projectPath: options.projectPath,
+					requireLanded: false,
+				}),
+		);
+	});
 
 	task
 		.command("delete")
@@ -1664,6 +1733,7 @@ export function registerTaskCommand(program: Command): void {
 			parseListColumn,
 		)
 		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
+		.option("--force", "With --column done: move even with unlanded commits, uncommitted changes or a failed check.")
 		.addHelpText(
 			"after",
 			[
@@ -1676,11 +1746,12 @@ export function registerTaskCommand(program: Command): void {
 				"",
 				"Use `move --column backlog` to requeue a card whose session died.",
 				"Moving to done reuses the `task done` workflow (stops the session,",
-				"cleans up the worktree, and starts linked tasks that become ready).",
+				"cleans up the worktree, and starts linked tasks that become ready),",
+				"and refuses work that has not landed unless --force is given.",
 				"",
 			].join("\n"),
 		)
-		.action(async (options: { taskId: string; column: ListTaskColumn; projectPath?: string }) => {
+		.action(async (options: { taskId: string; column: ListTaskColumn; projectPath?: string; force?: boolean }) => {
 			await runTaskCommand(
 				async () =>
 					await moveTask({
@@ -1688,6 +1759,7 @@ export function registerTaskCommand(program: Command): void {
 						taskId: options.taskId,
 						column: options.column,
 						projectPath: options.projectPath,
+						force: options.force,
 					}),
 			);
 		});

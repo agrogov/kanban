@@ -252,10 +252,10 @@ Each entry contains:
 
 ## task done
 
-Purpose: move a task or an entire column to \`done\`, stop active sessions if needed, clean up task worktrees, and auto-start any linked backlog tasks that become ready. \`task trash\` is also accepted as an alias.
+Purpose: move a task or an entire column to \`done\`, stop active sessions if needed, clean up task worktrees, and auto-start any linked backlog tasks that become ready. Refuses, moving nothing, when a task has commits that have not landed on its base ref, uncommitted changes, or a failed project check.
 
 Command:
-\`${kanbanCommand} task done (--task-id <task_id> | --column backlog|in_progress|review|done) [--project-path <path>]\`
+\`${kanbanCommand} task done (--task-id <task_id> | --column backlog|in_progress|review|done) [--force] [--project-path <path>]\`
 
 Parameters:
 - \`--task-id <task_id>\` optional single-task target.
@@ -265,6 +265,8 @@ Parameters:
 Notes:
 - Provide exactly one of \`--task-id\` or \`--column\`.
 - \`task done --column done\` is a no-op for tasks already in done.
+- \`--force\` moves the task despite those refusals. Use it only when the user has accepted losing or skipping that work.
+- \`task trash\` takes the same target options and discards a task on purpose, with no refusals.
 
 ## task delete
 
@@ -336,7 +338,7 @@ Parameters:
 
 Notes:
 - Allowed moves: \`backlog\` -> \`in_progress\` | \`done\`; \`in_progress\` -> \`backlog\` | \`review\` | \`done\`; \`review\` -> \`in_progress\` | \`done\`; \`done\` -> \`review\`.
-- Moving to \`done\` reuses the \`task done\` workflow: it stops the session, cleans up the task worktree, and starts linked tasks that become ready.
+- Moving to \`done\` reuses the \`task done\` workflow: it stops the session, cleans up the task worktree, starts linked tasks that become ready, and refuses unlanded work unless \`--force\` is given.
 - Requeueing out of \`in_progress\` or \`review\` to \`backlog\` stops any live session *before* moving the card, and reports \`sessionStopped\` in the result. If the session cannot be stopped the card is left where it is and the command fails, so a requeued card never has an agent still writing to its worktree.
 
 # Per-Task Agent, Provider, Model, and Effort Overrides

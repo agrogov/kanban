@@ -494,7 +494,16 @@ describe("moveTask", () => {
 			cwd: "/tmp/repo",
 			taskId: "task-1",
 			projectPath: undefined,
+			requireLanded: true,
 		});
 		expect(result).toMatchObject({ ok: true, workspacePath: "/tmp/repo" });
+	});
+
+	it("lifts the landing guard only when forced", async () => {
+		const harness = createMoveTaskHarness(createBoardStateWithTaskInColumn("review"));
+
+		await moveTask({ cwd: "/tmp/repo", taskId: "task-1", column: "trash", force: true }, harness.dependencies);
+
+		expect(harness.trashTask).toHaveBeenCalledWith(expect.objectContaining({ requireLanded: false }));
 	});
 });
