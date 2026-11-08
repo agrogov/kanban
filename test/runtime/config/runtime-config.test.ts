@@ -486,6 +486,40 @@ describe.sequential("runtime-config auto agent selection", () => {
 		}
 	});
 
+	it("preserves autoReviewCheck when shortcuts are saved", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-preserve-check-");
+		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
+			"kanban-project-runtime-config-preserve-check-",
+		);
+
+		try {
+			const runtimeProjectConfigDir = join(tempProject, ".cline", "kanban");
+			mkdirSync(runtimeProjectConfigDir, { recursive: true });
+			const autoReviewCheck = { command: "npm test", maxRetries: 0 };
+			writeFileSync(join(runtimeProjectConfigDir, "config.json"), JSON.stringify({ autoReviewCheck }), "utf8");
+
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				await saveRuntimeConfig(tempProject, {
+					selectedAgentId: "cline",
+					selectedShortcutLabel: null,
+					agentAutonomousModeEnabled: true,
+					readyForReviewNotificationsEnabled: true,
+					shortcuts: [],
+					commitPromptTemplate: "commit",
+					openPrPromptTemplate: "pr",
+				});
+
+				const payload = JSON.parse(readFileSync(join(runtimeProjectConfigDir, "config.json"), "utf8")) as {
+					autoReviewCheck?: unknown;
+				};
+				expect(payload.autoReviewCheck).toEqual(autoReviewCheck);
+			});
+		} finally {
+			cleanupProject();
+			cleanupHome();
+		}
+	});
+
 	it("removes an existing empty project config file when no shortcuts are saved", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-cleanup-empty-");
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir(

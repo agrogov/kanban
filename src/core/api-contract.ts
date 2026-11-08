@@ -156,9 +156,26 @@ export const runtimeTaskPendingGitActionSchema = z.object({
 	action: runtimeTaskAutoReviewModeSchema,
 	requestedAt: z.number(),
 	headCommitAtRequest: z.string().nullable(),
+	/** Absent on actions armed before this was recorded. */
+	hadUncommittedChanges: z.boolean().optional(),
 	attempt: z.number().int().nonnegative().default(0),
 });
 export type RuntimeTaskPendingGitAction = z.infer<typeof runtimeTaskPendingGitActionSchema>;
+
+export const runtimeTaskCheckResultSchema = z.object({
+	status: z.enum(["running", "passed", "failed"]),
+	command: z.string(),
+	exitCode: z.number().int().nullable(),
+	timedOut: z.boolean(),
+	output: z.string(),
+	/** The worktree state this result describes; the check reruns when the worktree differs. */
+	fingerprint: z.string().nullable(),
+	/** Failures already sent back to the task's agent. */
+	retries: z.number().int().nonnegative(),
+	startedAt: z.number(),
+	finishedAt: z.number().nullable(),
+});
+export type RuntimeTaskCheckResult = z.infer<typeof runtimeTaskCheckResultSchema>;
 
 export const runtimeBoardCardSchema = z
 	.object({
@@ -179,6 +196,7 @@ export const runtimeBoardCardSchema = z
 		createdAt: z.number(),
 		updatedAt: z.number(),
 		pendingGitAction: runtimeTaskPendingGitActionSchema.nullable().optional(),
+		checkResult: runtimeTaskCheckResultSchema.nullable().optional(),
 	})
 	.transform(
 		({
