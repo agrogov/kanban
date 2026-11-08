@@ -4,6 +4,7 @@ import type {
 	RuntimeBoardColumnId,
 	RuntimeTaskAgentSettings,
 	RuntimeTaskAutoReviewMode,
+	RuntimeTaskCheckResult,
 	RuntimeTaskImage,
 	RuntimeTaskPendingGitAction,
 } from "@/runtime/types";
@@ -40,6 +41,7 @@ export function getTaskAutoReviewCancelButtonLabel(mode: TaskAutoReviewMode | nu
 }
 
 export type TaskPendingGitAction = RuntimeTaskPendingGitAction;
+export type TaskCheckResult = RuntimeTaskCheckResult;
 
 export interface BoardCard {
 	id: string;
@@ -55,6 +57,7 @@ export interface BoardCard {
 	createdAt: number;
 	updatedAt: number;
 	pendingGitAction?: TaskPendingGitAction | null;
+	checkResult?: TaskCheckResult | null;
 }
 
 export interface BoardColumn {

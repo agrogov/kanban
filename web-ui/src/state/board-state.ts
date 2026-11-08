@@ -15,6 +15,7 @@ import {
 	DEFAULT_TASK_AUTO_REVIEW_MODE,
 	resolveTaskAutoReviewMode,
 	type TaskAutoReviewMode,
+	type TaskCheckResult,
 	type TaskImage,
 	type TaskPendingGitAction,
 } from "@/types";
@@ -148,6 +149,7 @@ function normalizeTaskPendingGitAction(rawPending: unknown): TaskPendingGitActio
 		action?: unknown;
 		requestedAt?: unknown;
 		headCommitAtRequest?: unknown;
+		hadUncommittedChanges?: unknown;
 		attempt?: unknown;
 	};
 	if (pending.action !== "commit" && pending.action !== "pr") {
@@ -167,7 +169,32 @@ function normalizeTaskPendingGitAction(rawPending: unknown): TaskPendingGitActio
 		action: pending.action,
 		requestedAt: pending.requestedAt,
 		headCommitAtRequest,
+		...(typeof pending.hadUncommittedChanges === "boolean"
+			? { hadUncommittedChanges: pending.hadUncommittedChanges }
+			: {}),
 		attempt: typeof pending.attempt === "number" && pending.attempt >= 0 ? Math.floor(pending.attempt) : 0,
+	};
+}
+
+function normalizeTaskCheckResult(rawResult: unknown): TaskCheckResult | undefined {
+	if (!rawResult || typeof rawResult !== "object") {
+		return undefined;
+	}
+	const result = rawResult as TaskCheckResult;
+	const hasStatus = result.status === "running" || result.status === "passed" || result.status === "failed";
+	if (!hasStatus || typeof result.command !== "string" || typeof result.startedAt !== "number") {
+		return undefined;
+	}
+	return {
+		status: result.status,
+		command: result.command,
+		exitCode: typeof result.exitCode === "number" ? result.exitCode : null,
+		timedOut: result.timedOut === true,
+		output: typeof result.output === "string" ? result.output : "",
+		fingerprint: typeof result.fingerprint === "string" ? result.fingerprint : null,
+		retries: typeof result.retries === "number" && result.retries >= 0 ? Math.floor(result.retries) : 0,
+		startedAt: result.startedAt,
+		finishedAt: typeof result.finishedAt === "number" ? result.finishedAt : null,
 	};
 }
 
@@ -193,6 +220,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		createdAt?: unknown;
 		updatedAt?: unknown;
 		pendingGitAction?: unknown;
+		checkResult?: unknown;
 	};
 	const prompt = typeof card.prompt === "string" ? card.prompt.trim() : "";
 	if (!prompt) {
@@ -215,6 +243,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 
 	const now = Date.now();
 	const pendingGitAction = normalizeTaskPendingGitAction(card.pendingGitAction);
+	const checkResult = normalizeTaskCheckResult(card.checkResult);
 
 	return {
 		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(createBrowserUuid),
@@ -232,6 +261,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		createdAt: typeof card.createdAt === "number" ? card.createdAt : now,
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
 		...(pendingGitAction !== undefined ? { pendingGitAction } : {}),
+		...(checkResult !== undefined ? { checkResult } : {}),
 	};
 }
 
