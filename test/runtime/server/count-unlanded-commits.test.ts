@@ -2,9 +2,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
-import { countUnlandedCommits } from "../../../src/server/auto-review-reconciler";
 import { runGit } from "../../../src/workspace/git-utils";
+import { countUnlandedCommits } from "../../../src/workspace/task-landing-probe";
 
 describe("countUnlandedCommits", () => {
 	let repo: string;

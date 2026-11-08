@@ -11,6 +11,7 @@
 // workspace with no auto-review candidates costs zero git work.
 
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
+import { type AutoReviewCheckConfig, loadAutoReviewCheckConfig } from "../config/auto-review-check-config";
 import { isNativeChatAgentId } from "../core/agent-catalog";
 import type {
 	RuntimeAgentId,
@@ -18,19 +19,29 @@ import type {
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
 	RuntimeTaskAutoReviewMode,
+	RuntimeTaskCheckResult,
 	RuntimeTaskPendingGitAction,
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
 } from "../core/api-contract";
-import { isPendingGitActionStale, moveTaskToColumn } from "../core/task-board-mutations";
+import {
+	isPendingGitActionStale,
+	moveTaskToColumn,
+	trashTaskAndGetReadyLinkedTaskIds,
+} from "../core/task-board-mutations";
 import type {
 	RuntimeWorkspaceAtomicMutationResponse,
 	RuntimeWorkspaceAtomicMutationResult,
 } from "../state/workspace-state";
 import type { TerminalSessionManager } from "../terminal/session-manager";
-import { probeGitWorkspaceState } from "../workspace/git-sync";
-import { runGit } from "../workspace/git-utils";
-import { deleteTaskWorktree as deleteTaskWorktreeFromDisk, getTaskWorkspacePathInfo } from "../workspace/task-worktree";
+import { probeTaskLanding, type TaskLandingProbe } from "../workspace/task-landing-probe";
+import { deleteTaskWorktree as deleteTaskWorktreeFromDisk } from "../workspace/task-worktree";
+import {
+	type AutoReviewCheckOutcome,
+	buildCheckFailurePrompt,
+	type RunAutoReviewCheckInput,
+	runAutoReviewCheck,
+} from "./auto-review-check";
 
 /**
  * Evaluation cadence. Nothing here is latency critical: a slower interval
@@ -65,20 +76,7 @@ export interface AutoReviewWorkspace {
 	terminalManager: TerminalSessionManager | null;
 }
 
-/** Git metadata for one task worktree, probed on demand. */
-export interface AutoReviewTaskProbe {
-	exists: boolean;
-	headCommit: string | null;
-	changedFiles: number;
-	/**
-	 * Commits in the task worktree that have not landed on the base ref yet (patch-equivalent
-	 * commits already cherry-picked there do not count). Covers agents that commit their own work,
-	 * which leaves a clean tree that would otherwise look like "nothing to do".
-	 *
-	 * `undefined` means unknown (the git probe failed), which is deliberately distinct from `0`.
-	 */
-	unlandedCommits?: number;
-}
+export type AutoReviewTaskProbe = TaskLandingProbe;
 
 export type MutateWorkspaceState = <T>(
 	workspacePath: string,
@@ -108,6 +106,12 @@ export interface CreateAutoReviewReconcilerDependencies {
 	onBoardMutated?: (workspaceId: string, workspacePath: string) => Promise<void> | void;
 	/** Removes a landed task's worktree; defaults to the real implementation. */
 	deleteTaskWorktree?: (input: { repoPath: string; taskId: string }) => Promise<unknown>;
+	/** Starts a backlog card whose prerequisites have all landed. Without it, dependents wait for a manual start. */
+	startTask?: (input: { workspacePath: string; taskId: string }) => Promise<unknown>;
+	/** Reads the project's check command; defaults to the project config file. */
+	loadCheckConfig?: (workspacePath: string) => Promise<AutoReviewCheckConfig | null>;
+	/** Runs the project's check command; defaults to the real implementation. */
+	runCheck?: (input: RunAutoReviewCheckInput) => Promise<AutoReviewCheckOutcome>;
 	evaluationIntervalMs?: number;
 	now?: () => number;
 	warn?: (message: string) => void;
@@ -134,6 +138,10 @@ interface ReconcilerWorkspaceRuntime {
 	/** Git-action prompts sent per task for the current worktree HEAD, so a card that never lands is not re-prompted forever. */
 	gitActionAttemptsByTaskId: Map<string, { headCommit: string | null; count: number }>;
 	lastDoneWorktreeSweepAt: number;
+	/** Project checks currently running, so a cycle never starts a second one for the same card. */
+	checksInFlight: Map<string, AbortController>;
+	/** Last reported problem with the check config, so a broken file warns once rather than every cycle. */
+	checkConfigError: string | null;
 }
 
 /** Each attempt bounces the card review -> in_progress -> review, so stop after a few. */
@@ -148,7 +156,16 @@ function createWorkspaceRuntime(): ReconcilerWorkspaceRuntime {
 		clineUnavailableLoggedTaskIds: new Set<string>(),
 		gitActionAttemptsByTaskId: new Map(),
 		lastDoneWorktreeSweepAt: 0,
+		checksInFlight: new Map(),
+		checkConfigError: null,
 	};
+}
+
+function abortRunningChecks(runtime: ReconcilerWorkspaceRuntime): void {
+	for (const controller of runtime.checksInFlight.values()) {
+		controller.abort();
+	}
+	runtime.checksInFlight.clear();
 }
 
 function resolveAutoReviewMode(card: RuntimeBoardCard): RuntimeTaskAutoReviewMode {
@@ -217,88 +234,11 @@ function replaceBoardCard(board: RuntimeBoardData, taskId: string, nextCard: Run
 	};
 }
 
-async function defaultProbeTaskWorkspace(input: {
-	workspacePath: string;
-	taskId: string;
-	baseRef: string;
-}): Promise<AutoReviewTaskProbe> {
-	const pathInfo = await getTaskWorkspacePathInfo({
-		cwd: input.workspacePath,
-		taskId: input.taskId,
-		baseRef: input.baseRef,
-	});
-	if (!pathInfo.exists) {
-		return { exists: false, headCommit: null, changedFiles: 0 };
-	}
-	const [probe, unlandedCommits] = await Promise.all([
-		probeGitWorkspaceState(pathInfo.path),
-		countUnlandedCommits(pathInfo.path, input.baseRef),
-	]);
-	return {
-		exists: true,
-		headCommit: probe.headCommit,
-		changedFiles: probe.changedFiles,
-		unlandedCommits,
-	};
-}
-
-export async function countUnlandedCommits(worktreePath: string, baseRef: string): Promise<number | undefined> {
-	// `git cherry` prefixes commits missing from the base with "+" and patch-equivalent ones with "-".
-	const result = await runGit(worktreePath, ["cherry", baseRef, "HEAD"]);
-	if (!result.ok) {
-		// Unknown must not collapse into zero: `0` means "nothing left to land", which completes the
-		// card and deletes the worktree. On a transient git failure that would destroy unlanded work.
-		return undefined;
-	}
-	const missing = result.stdout
-		.split("\n")
-		.filter((line) => line.startsWith("+"))
-		.map((line) => line.slice(1).trim());
-	if (missing.length === 0) {
-		return 0;
-	}
-	// A cherry-pick whose conflicts were resolved by hand has a different patch id, so `git cherry`
-	// reports it as missing forever. Cherry-pick keeps author, author date and subject: match on those.
-	// Trade-off: two genuinely distinct commits that share author, author date and subject (rebase or
-	// squash-and-recommit flows) become indistinguishable, so one can vouch for the other.
-	const identities = await Promise.all(missing.map((sha) => readCommitIdentity(worktreePath, sha)));
-	const baseIdentities = await readBaseIdentities(worktreePath, baseRef, identities);
-	// A failed identity read yields `null` and a failed base log yields an empty set, so both errors
-	// keep the commit counted as unlanded.
-	return identities.filter((identity) => identity === null || !baseIdentities.has(identity)).length;
-}
-
-const COMMIT_IDENTITY_FORMAT = "%an%x00%at%x00%s";
-
-async function readCommitIdentity(worktreePath: string, sha: string): Promise<string | null> {
-	const result = await runGit(worktreePath, ["log", "-1", `--format=${COMMIT_IDENTITY_FORMAT}`, sha]);
-	return result.ok ? result.stdout.trim() : null;
-}
-
-async function readBaseIdentities(
-	worktreePath: string,
-	baseRef: string,
-	identities: (string | null)[],
-): Promise<Set<string>> {
-	const earliest = Math.min(
-		...identities.map((identity) => Number(identity?.split("\0")[1] ?? Number.POSITIVE_INFINITY)),
-	);
-	if (!Number.isFinite(earliest)) {
-		return new Set();
-	}
-	const result = await runGit(worktreePath, [
-		"log",
-		baseRef,
-		`--since=${earliest - 1}`,
-		`--format=${COMMIT_IDENTITY_FORMAT}`,
-	]);
-	// --since filters on committer date, which is always >= the author date of a cherry-pick.
-	return new Set(result.ok ? result.stdout.split("\n").filter(Boolean) : []);
-}
-
 export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDependencies): AutoReviewReconciler {
 	const workspaceRuntimes = new Map<string, ReconcilerWorkspaceRuntime>();
-	const probeTaskWorkspace = deps.probeTaskWorkspace ?? defaultProbeTaskWorkspace;
+	const probeTaskWorkspace = deps.probeTaskWorkspace ?? probeTaskLanding;
+	const loadCheckConfig = deps.loadCheckConfig ?? loadAutoReviewCheckConfig;
+	const runCheck = deps.runCheck ?? runAutoReviewCheck;
 	let disposed = false;
 	let evaluationTimer: NodeJS.Timeout | null = null;
 
@@ -317,6 +257,7 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 		taskId: string,
 		action: RuntimeTaskAutoReviewMode,
 		headCommitAtRequest: string | null,
+		hadUncommittedChanges: boolean,
 		timestamp: number,
 	): Promise<boolean> => {
 		try {
@@ -334,6 +275,7 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 					action,
 					requestedAt: timestamp,
 					headCommitAtRequest,
+					hadUncommittedChanges,
 					attempt: existing ? existing.attempt + 1 : 0,
 				};
 				return {
@@ -373,35 +315,137 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 		}
 	};
 
+	/** Moves a landed card to Done. Returns the dependents that became ready, or `null` if it did not move. */
 	const completePendingGitAction = async (
 		workspacePath: string,
 		taskId: string,
 		timestamp: number,
-	): Promise<boolean> => {
+	): Promise<string[] | null> => {
 		try {
-			const response = await deps.mutateWorkspaceState(workspacePath, (currentState) => {
+			const response = await deps.mutateWorkspaceState<string[] | null>(workspacePath, (currentState) => {
 				const location = findCardLocation(currentState.board, taskId);
 				if (!location || location.columnId !== "review") {
-					return { board: currentState.board, value: false, save: false };
+					return { board: currentState.board, value: null, save: false };
 				}
 				if (location.card.autoReviewEnabled !== true || !location.card.pendingGitAction) {
-					return { board: currentState.board, value: false, save: false };
+					return { board: currentState.board, value: null, save: false };
 				}
-				const moved = moveTaskToColumn(currentState.board, taskId, "trash", timestamp);
+				const moved = trashTaskAndGetReadyLinkedTaskIds(currentState.board, taskId, timestamp);
 				if (!moved.moved || !moved.task) {
-					return { board: currentState.board, value: false, save: false };
+					return { board: currentState.board, value: null, save: false };
 				}
 				return {
 					board: replaceBoardCard(moved.board, taskId, {
 						...moved.task,
 						pendingGitAction: null,
 					}),
-					value: true,
+					value: moved.readyTaskIds,
 				};
 			});
 			return response.value;
 		} catch {
+			return null;
+		}
+	};
+
+	/** Mirrors the browser's move, so a card finishes its turn with no client connected. */
+	const moveFinishedTaskToReview = async (
+		workspacePath: string,
+		taskId: string,
+		sessionUpdatedAt: number,
+		timestamp: number,
+	): Promise<boolean> => {
+		try {
+			const response = await deps.mutateWorkspaceState(workspacePath, (currentState) => {
+				const location = findCardLocation(currentState.board, taskId);
+				// A session older than the card's last change would bounce a card just dragged back by hand.
+				if (!location || location.columnId !== "in_progress" || sessionUpdatedAt < location.card.updatedAt) {
+					return { board: currentState.board, value: false, save: false };
+				}
+				const moved = moveTaskToColumn(currentState.board, taskId, "review", timestamp);
+				if (!moved.moved) {
+					return { board: currentState.board, value: false, save: false };
+				}
+				return { board: moved.board, value: true };
+			});
+			return response.value;
+		} catch {
 			return false;
+		}
+	};
+
+	/** `state.sessions` comes from disk and goes stale with no browser connected, so ask the live sources. */
+	const getFinishedSessionUpdatedAt = (workspace: AutoReviewWorkspace, taskId: string): number | null => {
+		const summary =
+			workspace.terminalManager?.getSummary(taskId) ??
+			deps.getClineTaskSessionService?.(workspace.workspaceId)?.getSummary(taskId) ??
+			null;
+		return summary?.state === "awaiting_review" ? summary.updatedAt : null;
+	};
+
+	const isSessionRunning = (workspace: AutoReviewWorkspace, taskId: string): boolean => {
+		const terminalManager = workspace.terminalManager;
+		// `getSummary` also returns hydrated entries whose process is gone, so it needs the liveness check.
+		if (terminalManager?.getSummary(taskId)?.state === "running" && terminalManager.hasActiveSession(taskId)) {
+			return true;
+		}
+		return deps.getClineTaskSessionService?.(workspace.workspaceId)?.getSummary(taskId)?.state === "running";
+	};
+
+	const writeRunningCheckResult = async (
+		workspacePath: string,
+		taskId: string,
+		checkResult: RuntimeTaskCheckResult,
+	): Promise<void> => {
+		await deps.mutateWorkspaceState(workspacePath, (currentState) => {
+			const location = findCardLocation(currentState.board, taskId);
+			if (!location) {
+				return { board: currentState.board, value: undefined, save: false };
+			}
+			return {
+				board: replaceBoardCard(currentState.board, taskId, { ...location.card, checkResult }),
+				value: undefined,
+			};
+		});
+	};
+
+	/** Records a finished check. Returns whether the failure should go back to the task's agent. */
+	const writeFinishedCheckResult = async (
+		workspacePath: string,
+		taskId: string,
+		checkResult: RuntimeTaskCheckResult,
+		maxRetries: number,
+	): Promise<boolean> => {
+		const response = await deps.mutateWorkspaceState(workspacePath, (currentState) => {
+			const location = findCardLocation(currentState.board, taskId);
+			if (!location) {
+				return { board: currentState.board, value: false, save: false };
+			}
+			const retry =
+				checkResult.status === "failed" &&
+				location.columnId === "review" &&
+				location.card.autoReviewEnabled === true &&
+				checkResult.retries < maxRetries;
+			return {
+				board: replaceBoardCard(currentState.board, taskId, {
+					...location.card,
+					// A pass restores the budget: it limits consecutive failures, not a card's lifetime.
+					checkResult: {
+						...checkResult,
+						retries: checkResult.status === "passed" ? 0 : checkResult.retries + (retry ? 1 : 0),
+					},
+				}),
+				value: retry,
+			};
+		});
+		return response.value;
+	};
+
+	const notifyBoardMutated = async (workspaceId: string, workspacePath: string): Promise<void> => {
+		try {
+			await deps.onBoardMutated?.(workspaceId, workspacePath);
+		} catch {
+			// Broadcast is best-effort; the persisted board is already correct.
 		}
 	};
 
@@ -419,6 +463,16 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 			await (deps.deleteTaskWorktree ?? deleteTaskWorktreeFromDisk)({ repoPath: workspacePath, taskId });
 		} catch (error) {
 			deps.warn?.(`Auto-review could not clean up the worktree of task "${taskId}": ${String(error)}`);
+		}
+	};
+
+	const startReadyTasks = async (workspacePath: string, taskIds: string[]): Promise<void> => {
+		for (const taskId of taskIds) {
+			try {
+				await deps.startTask?.({ workspacePath, taskId });
+			} catch (error) {
+				deps.warn?.(`Auto-review could not start the ready task "${taskId}": ${String(error)}`);
+			}
 		}
 	};
 
@@ -506,6 +560,22 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 		}
 	};
 
+	const deliverPrompt = async (input: {
+		workspace: AutoReviewWorkspace;
+		card: RuntimeBoardCard;
+		effectiveAgent: RuntimeAgentId | null;
+		prompt: string;
+		runtime: ReconcilerWorkspaceRuntime;
+	}): Promise<boolean> => {
+		if (isNativeChatAgentId(input.effectiveAgent)) {
+			return await triggerClineGitAction(input.workspace.workspaceId, input.card, input.prompt);
+		}
+		if (!input.workspace.terminalManager) {
+			return false;
+		}
+		return triggerTerminalGitAction(input.workspace.terminalManager, input.card, input.prompt, input.runtime);
+	};
+
 	const triggerGitAction = async (input: {
 		workspace: AutoReviewWorkspace;
 		card: RuntimeBoardCard;
@@ -515,13 +585,87 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 	}): Promise<boolean> => {
 		const action = resolveAutoReviewMode(input.card);
 		const prompt = buildGitActionPrompt(action, input.card.baseRef, input.templates);
-		if (isNativeChatAgentId(input.effectiveAgent)) {
-			return await triggerClineGitAction(input.workspace.workspaceId, input.card, prompt);
+		return await deliverPrompt({ ...input, prompt });
+	};
+
+	// Detached from the evaluation chain: a check can run for many minutes and must not hold up
+	// every other card. Its result is stored on the card, and the next cycle acts on it.
+	const runProjectCheck = async (input: {
+		workspace: AutoReviewWorkspace;
+		workspacePath: string;
+		card: RuntimeBoardCard;
+		effectiveAgent: RuntimeAgentId | null;
+		config: AutoReviewCheckConfig;
+		runtime: ReconcilerWorkspaceRuntime;
+	}): Promise<void> => {
+		const { workspace, workspacePath, card, config, runtime } = input;
+		const controller = new AbortController();
+		runtime.checksInFlight.set(card.id, controller);
+		const startedAt = deps.now?.() ?? Date.now();
+		const base = { command: config.command, retries: card.checkResult?.retries ?? 0, startedAt };
+		let recorded = false;
+		try {
+			await writeRunningCheckResult(workspacePath, card.id, {
+				...base,
+				status: "running",
+				exitCode: null,
+				timedOut: false,
+				output: "",
+				fingerprint: null,
+				finishedAt: null,
+			});
+			await notifyBoardMutated(workspace.workspaceId, workspacePath);
+			const outcome = await runCheck({
+				workspacePath,
+				taskId: card.id,
+				baseRef: card.baseRef,
+				command: config.command,
+				timeoutMs: config.timeoutMs,
+				signal: controller.signal,
+			});
+			if (controller.signal.aborted) {
+				return;
+			}
+			// Probed after the run, so a check that generates files does not invalidate its own result.
+			const probe = await probeTaskWorkspace({
+				workspacePath,
+				taskId: card.id,
+				baseRef: card.baseRef,
+			}).catch(() => null);
+			if (controller.signal.aborted) {
+				return;
+			}
+			const retry = await writeFinishedCheckResult(
+				workspacePath,
+				card.id,
+				{
+					...base,
+					status: outcome.exitCode === 0 && !outcome.timedOut ? "passed" : "failed",
+					exitCode: outcome.exitCode,
+					timedOut: outcome.timedOut,
+					output: outcome.output,
+					fingerprint: probe?.stateToken ?? null,
+					finishedAt: deps.now?.() ?? Date.now(),
+				},
+				config.maxRetries,
+			);
+			recorded = true;
+			await notifyBoardMutated(workspace.workspaceId, workspacePath);
+			if (retry) {
+				const prompt = buildCheckFailurePrompt(config.command, outcome);
+				if (!(await deliverPrompt({ ...input, prompt }))) {
+					deps.warn?.(`Auto-review could not send the failed check of task "${card.id}" back to its agent.`);
+				}
+			}
+		} catch (error) {
+			deps.warn?.(`Auto-review could not run the check of task "${card.id}": ${String(error)}`);
+		} finally {
+			runtime.checksInFlight.delete(card.id);
 		}
-		if (!input.workspace.terminalManager) {
-			return false;
+		// Only after a recorded result: re-evaluating after a failed write would spin without any delay.
+		if (recorded && !disposed && workspaceRuntimes.get(workspace.workspaceId) === runtime) {
+			void evaluateWorkspace(workspace.workspaceId);
 		}
-		return triggerTerminalGitAction(input.workspace.terminalManager, input.card, prompt, input.runtime);
 	};
 
 	const reconcileWorkspace = async (
@@ -536,15 +680,31 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 		const stillTracked = (): boolean => workspaceRuntimes.has(workspace.workspaceId);
 		let boardMutated = false;
 
-		// Housekeeping pass first: armed cards that left review (or lost the
-		// auto-review toggle) are disarmed. This needs no git work.
+		// Housekeeping pass first: finished in-progress cards go to review, and armed cards that left
+		// the commit flow (or lost the auto-review toggle) are disarmed. This needs no git work.
 		const candidates: RuntimeBoardCard[] = [];
 		for (const column of state.board.columns) {
 			for (const card of column.cards) {
 				const pendingGitAction = card.pendingGitAction ?? null;
 				if (column.id !== "review") {
+					// Delivering the commit prompt sets the session running, which moves the card back to
+					// in progress for that turn. It has to stay armed through that or the landing is missed.
+					const armedForCommitTurn = column.id === "in_progress" && card.autoReviewEnabled === true;
 					// A card that left review while armed must not stay armed forever.
-					if (pendingGitAction && stillTracked() && (await clearPendingGitAction(workspacePath, card.id))) {
+					if (
+						pendingGitAction &&
+						!armedForCommitTurn &&
+						stillTracked() &&
+						(await clearPendingGitAction(workspacePath, card.id))
+					) {
+						boardMutated = true;
+					}
+					const finishedAt = column.id === "in_progress" ? getFinishedSessionUpdatedAt(workspace, card.id) : null;
+					if (
+						finishedAt !== null &&
+						stillTracked() &&
+						(await moveFinishedTaskToReview(workspacePath, card.id, finishedAt, timestamp))
+					) {
 						boardMutated = true;
 					}
 					continue;
@@ -591,6 +751,26 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 				return probe;
 			};
 
+			// Read at most once per cycle, and only when a card actually reaches the check.
+			let checkConfigPromise: Promise<AutoReviewCheckConfig | null | "invalid"> | null = null;
+			const getCheckConfig = (): Promise<AutoReviewCheckConfig | null | "invalid"> => {
+				checkConfigPromise ??= loadCheckConfig(workspacePath).then(
+					(config) => {
+						runtime.checkConfigError = null;
+						return config;
+					},
+					(error: unknown) => {
+						const message = String(error);
+						if (runtime.checkConfigError !== message) {
+							runtime.checkConfigError = message;
+							deps.warn?.(`Auto-review is holding cards because the check config is invalid: ${message}`);
+						}
+						return "invalid" as const;
+					},
+				);
+				return checkConfigPromise;
+			};
+
 			for (const card of candidates) {
 				if (!stillTracked()) {
 					break;
@@ -599,28 +779,35 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 				const effectiveAgent = card.agentId ?? selectedAgentId;
 
 				if (pendingGitAction) {
-					if (isPendingGitActionStale(pendingGitAction, timestamp)) {
-						if (await clearPendingGitAction(workspacePath, card.id)) {
+					// The agent may still be committing, and its worktree is not a stable thing to judge yet.
+					if (isSessionRunning(workspace, card.id)) {
+						continue;
+					}
+					// Done means landed, nothing else: no HEAD-moved fallback. Commits that exist only in the
+					// worktree would be deleted with it. A tree that was dirty when armed also has to show a
+					// new HEAD, otherwise an agent discarding its changes would look like a landing.
+					const probe = await probeTask(card);
+					const landed =
+						probe.exists &&
+						probe.unlandedCommits === 0 &&
+						probe.changedFiles === 0 &&
+						(pendingGitAction.hadUncommittedChanges !== true ||
+							probe.headCommit !== pendingGitAction.headCommitAtRequest);
+					if (landed) {
+						const readyTaskIds = stillTracked()
+							? await completePendingGitAction(workspacePath, card.id, timestamp)
+							: null;
+						if (readyTaskIds) {
+							runtime.gitActionAttemptsByTaskId.delete(card.id);
 							boardMutated = true;
+							await cleanupLandedTask(workspace, workspacePath, card.id);
+							await startReadyTasks(workspacePath, readyTaskIds);
 						}
 						continue;
 					}
-					// Completion is judged on evidence: HEAD moved past the commit
-					// recorded at arming time. Zero changed files alone proves nothing.
-					const probe = await probeTask(card);
-					// With landing info the card is done only once nothing is left to land on the base
-					// ref; without it (probe failed) fall back to HEAD having moved past the arming commit.
-					const landingKnown = probe.exists && probe.unlandedCommits !== undefined;
-					const completed = landingKnown
-						? probe.unlandedCommits === 0 && probe.changedFiles === 0
-						: probe.exists &&
-							probe.headCommit !== null &&
-							probe.headCommit !== pendingGitAction.headCommitAtRequest;
-					if (completed && stillTracked() && (await completePendingGitAction(workspacePath, card.id, timestamp))) {
-						runtime.gitActionAttemptsByTaskId.delete(card.id);
-						boardMutated = true;
-						if (landingKnown) {
-							await cleanupLandedTask(workspace, workspacePath, card.id);
+					if (isPendingGitActionStale(pendingGitAction, timestamp)) {
+						if (await clearPendingGitAction(workspacePath, card.id)) {
+							boardMutated = true;
 						}
 					}
 					continue;
@@ -671,6 +858,36 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 					continue;
 				}
 
+				const checkConfig = await getCheckConfig();
+				if (checkConfig === "invalid") {
+					continue;
+				}
+				if (checkConfig) {
+					if (runtime.checksInFlight.has(card.id) || isSessionRunning(workspace, card.id)) {
+						continue;
+					}
+					const previous = card.checkResult ?? null;
+					const previousIsCurrent =
+						previous !== null &&
+						previous.status !== "running" &&
+						previous.fingerprint === (probe.stateToken ?? null);
+					if (!previousIsCurrent) {
+						// A persisted "running" with nothing in flight was cut off by a restart, so it reruns too.
+						void runProjectCheck({
+							workspace,
+							workspacePath,
+							card,
+							effectiveAgent,
+							config: checkConfig,
+							runtime,
+						});
+						continue;
+					}
+					if (previous.status !== "passed") {
+						continue;
+					}
+				}
+
 				runtime.gitActionInFlightTaskIds.add(card.id);
 				try {
 					const armed = await armPendingGitAction(
@@ -678,6 +895,7 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 						card.id,
 						resolveAutoReviewMode(card),
 						probe.headCommit,
+						probe.changedFiles > 0,
 						timestamp,
 					);
 					if (!armed || !stillTracked()) {
@@ -701,11 +919,7 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 		}
 
 		if (boardMutated && stillTracked()) {
-			try {
-				await deps.onBoardMutated?.(workspace.workspaceId, workspacePath);
-			} catch {
-				// Broadcast is best-effort; the persisted board is already correct.
-			}
+			await notifyBoardMutated(workspace.workspaceId, workspacePath);
 		}
 	};
 
@@ -796,6 +1010,7 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 				for (const timer of runtime.submitTimers) {
 					clearTimeout(timer);
 				}
+				abortRunningChecks(runtime);
 			}
 			workspaceRuntimes.delete(workspaceId);
 		},
@@ -811,6 +1026,7 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 					clearTimeout(timer);
 				}
 				runtime.submitTimers.clear();
+				abortRunningChecks(runtime);
 				runtime.gitActionInFlightTaskIds.clear();
 				runtime.clineUnavailableLoggedTaskIds.clear();
 			}

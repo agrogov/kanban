@@ -36,7 +36,7 @@ import type { ClineTaskSessionService } from "./cline-sdk/cline-task-session-ser
 import { disposeCliTelemetryService } from "./cline-sdk/cline-telemetry-service.js";
 import { registerAgentsCommand } from "./commands/agents";
 import { registerHooksCommand } from "./commands/hooks";
-import { registerTaskCommand } from "./commands/task";
+import { registerTaskCommand, startTask } from "./commands/task";
 import { loadGlobalRuntimeConfig, loadRuntimeConfig } from "./config/runtime-config";
 import type { RuntimeCommandRunResponse } from "./core/api-contract";
 import { createGitProcessEnv } from "./core/git-process-env";
@@ -565,6 +565,7 @@ async function startServer(): Promise<{
 	// already-running runtime never reach this point and must not reconcile.
 	autoReviewReconciler = createAutoReviewReconciler({
 		listWorkspaces: () => workspaceRegistry.listManagedWorkspaces(),
+		startTask: ({ workspacePath, taskId }) => startTask({ cwd: workspacePath, taskId, projectPath: workspacePath }),
 		getWorkspaceState: async (workspaceId) => {
 			const state = await loadWorkspaceStateById(workspaceId);
 			if (!state) {

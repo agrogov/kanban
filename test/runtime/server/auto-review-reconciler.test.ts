@@ -5,9 +5,11 @@ import type {
 	RuntimeBoardCard,
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
+	RuntimeTaskSessionState,
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
 } from "../../../src/core/api-contract";
+import type { AutoReviewCheckOutcome } from "../../../src/server/auto-review-check";
 import type {
 	AutoReviewTaskProbe,
 	CreateAutoReviewReconcilerDependencies,
@@ -94,9 +96,12 @@ function createWorkspaceStateStore(initial: StoredWorkspaceState) {
 
 function createFakeTerminalManager() {
 	const unavailableTaskIds = new Set<string>();
+	const sessionStates = new Map<string, { state: RuntimeTaskSessionState; updatedAt: number }>();
 	const writeInput = vi.fn((taskId: string, _data: Buffer) => ({ taskId }) as unknown as RuntimeTaskSessionSummary);
 	const getSummary = vi.fn((taskId: string) =>
-		unavailableTaskIds.has(taskId) ? null : ({ taskId } as unknown as RuntimeTaskSessionSummary),
+		unavailableTaskIds.has(taskId)
+			? null
+			: ({ taskId, ...sessionStates.get(taskId) } as unknown as RuntimeTaskSessionSummary),
 	);
 	const stopTaskSession = vi.fn((_taskId: string) => null);
 	const hasActiveSession = vi.fn((taskId: string) => !unavailableTaskIds.has(taskId));
@@ -107,6 +112,9 @@ function createFakeTerminalManager() {
 		stopTaskSession,
 		dropSession: (taskId: string) => {
 			unavailableTaskIds.add(taskId);
+		},
+		setSessionState: (taskId: string, state: RuntimeTaskSessionState, updatedAt = Number.MAX_SAFE_INTEGER) => {
+			sessionStates.set(taskId, { state, updatedAt });
 		},
 		manager: {
 			writeInput,
@@ -143,6 +151,8 @@ interface HarnessOptions {
 	clineService?: ClineTaskSessionService;
 	promptTemplates?: TaskGitPromptTemplates;
 	now?: () => number;
+	checkConfig?: { command: string; timeoutMs: number; maxRetries: number } | null;
+	startTask?: (input: { workspacePath: string; taskId: string }) => Promise<unknown>;
 }
 
 function createHarness(options: HarnessOptions) {
@@ -160,6 +170,15 @@ function createHarness(options: HarnessOptions) {
 	const onBoardMutated = vi.fn();
 	const deleteTaskWorktree = vi.fn(async () => ({ ok: true }));
 	const warn = vi.fn();
+	const startTask = vi.fn(options.startTask ?? (async () => undefined));
+	const loadCheckConfig = vi.fn(async () => options.checkConfig ?? null);
+	const runCheck = vi.fn(
+		async (_input: { signal: AbortSignal }): Promise<AutoReviewCheckOutcome> => ({
+			exitCode: 0,
+			timedOut: false,
+			output: "",
+		}),
+	);
 	let staleSnapshot: RuntimeWorkspaceStateResponse | null = null;
 
 	const dependencies: CreateAutoReviewReconcilerDependencies = {
@@ -184,6 +203,9 @@ function createHarness(options: HarnessOptions) {
 		probeTaskWorkspace,
 		deleteTaskWorktree,
 		onBoardMutated,
+		startTask,
+		loadCheckConfig,
+		runCheck,
 		...(options.now ? { now: options.now } : {}),
 		warn,
 	};
@@ -198,6 +220,15 @@ function createHarness(options: HarnessOptions) {
 		deleteTaskWorktree,
 		onBoardMutated,
 		warn,
+		startTask,
+		loadCheckConfig,
+		runCheck,
+		/** Lets a detached project check finish and the follow-up evaluation it schedules run. */
+		async settle() {
+			for (let flush = 0; flush < 10; flush += 1) {
+				await vi.advanceTimersByTimeAsync(0);
+			}
+		},
 		setProbe(taskId: string, probe: AutoReviewTaskProbe) {
 			probeResults.set(taskId, probe);
 		},
@@ -232,6 +263,7 @@ describe("auto-review reconciler", () => {
 			action: "commit",
 			requestedAt: expect.any(Number),
 			headCommitAtRequest: "commit-1",
+			hadUncommittedChanges: true,
 			attempt: 0,
 		});
 		expect(harness.terminal.writeInput).toHaveBeenCalledTimes(1);
@@ -244,8 +276,8 @@ describe("auto-review reconciler", () => {
 		expect(harness.terminal.writeInput).toHaveBeenCalledTimes(2);
 		expect(harness.terminal.writeInput.mock.calls[1]?.[1]?.toString("utf8")).toBe("\r");
 
-		// HEAD moves once the agent finishes the commit: the card completes.
-		harness.setProbe("task-1", { exists: true, headCommit: "commit-2", changedFiles: 0 });
+		// The commit lands on the base ref once the agent finishes: the card completes.
+		harness.setProbe("task-1", { exists: true, headCommit: "commit-2", changedFiles: 0, unlandedCommits: 0 });
 		await harness.evaluate();
 
 		const completed = findCardInBoard(harness.store.stored.board, "task-1");
@@ -265,6 +297,7 @@ describe("auto-review reconciler", () => {
 			action: "commit",
 			requestedAt: expect.any(Number),
 			headCommitAtRequest: "commit-1",
+			hadUncommittedChanges: false,
 			attempt: 0,
 		});
 		expect(harness.terminal.writeInput).toHaveBeenCalledTimes(1);
@@ -351,10 +384,10 @@ describe("auto-review reconciler", () => {
 			},
 		});
 		const harness = createHarness({ board: createBoard({ review: [armedCard] }) });
-		harness.setProbe("task-1", { exists: true, headCommit: "commit-2", changedFiles: 0 });
+		harness.setProbe("task-1", { exists: true, headCommit: "commit-2", changedFiles: 0, unlandedCommits: 0 });
 
 		// A fresh reconciler instance sees only the persisted arming state and
-		// completes the action once HEAD has moved past the recorded commit.
+		// completes the action once nothing is left to land.
 		await harness.evaluate();
 
 		const completed = findCardInBoard(harness.store.stored.board, "task-1");
@@ -455,8 +488,8 @@ describe("auto-review reconciler", () => {
 		// The terminal path must not be used for native Cline sessions.
 		expect(harness.terminal.writeInput).not.toHaveBeenCalled();
 
-		// Completion still works once HEAD moves.
-		harness.setProbe("task-1", { exists: true, headCommit: "commit-2", changedFiles: 0 });
+		// Completion still works once the work lands.
+		harness.setProbe("task-1", { exists: true, headCommit: "commit-2", changedFiles: 0, unlandedCommits: 0 });
 		await harness.evaluate();
 
 		const completed = findCardInBoard(harness.store.stored.board, "task-1");
@@ -554,9 +587,334 @@ describe("auto-review reconciler", () => {
 
 		await harness.evaluate();
 
-		// The HEAD-moved heuristic still closes the action, but cleanup needs positive landing evidence.
-		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("trash");
+		// A moved HEAD proves nothing about the base ref, and Done must mean landed.
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("review");
 		expect(harness.deleteTaskWorktree).not.toHaveBeenCalled();
+	});
+
+	const armedAt = (overrides: Record<string, unknown> = {}) => ({
+		action: "commit" as const,
+		requestedAt: Date.now(),
+		headCommitAtRequest: "commit-1",
+		attempt: 0,
+		...overrides,
+	});
+	const landedProbe = { exists: true, headCommit: "commit-2", changedFiles: 0, unlandedCommits: 0 };
+
+	it("keeps a card armed through its commit turn in progress, then completes it", async () => {
+		const card = createCard({ id: "task-1", autoReviewEnabled: true, pendingGitAction: armedAt() });
+		const harness = createHarness({ board: createBoard({ in_progress: [card] }) });
+		harness.setProbe("task-1", landedProbe);
+		harness.terminal.setSessionState("task-1", "running");
+
+		await harness.evaluate();
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("in_progress");
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.card.pendingGitAction).not.toBeNull();
+
+		harness.terminal.setSessionState("task-1", "awaiting_review");
+		await harness.evaluate();
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("review");
+
+		await harness.evaluate();
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("trash");
+	});
+
+	it("still disarms a card that left the commit flow", async () => {
+		const backlogCard = createCard({ id: "task-1", autoReviewEnabled: true, pendingGitAction: armedAt() });
+		const toggledOff = createCard({ id: "task-2", autoReviewEnabled: false, pendingGitAction: armedAt() });
+		const harness = createHarness({ board: createBoard({ backlog: [backlogCard], in_progress: [toggledOff] }) });
+
+		await harness.evaluate();
+
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.card.pendingGitAction ?? null).toBeNull();
+		expect(findCardInBoard(harness.store.stored.board, "task-2")?.card.pendingGitAction ?? null).toBeNull();
+	});
+
+	it("moves any finished in-progress card to review with no browser connected", async () => {
+		const card = createCard({ id: "task-1", updatedAt: 100 });
+		const harness = createHarness({ board: createBoard({ in_progress: [card] }) });
+		harness.terminal.setSessionState("task-1", "awaiting_review", 200);
+
+		await harness.evaluate();
+
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("review");
+	});
+
+	it.each(["failed", "interrupted"] as const)("leaves a %s session's half-done work in progress", async (state) => {
+		const card = createCard({ id: "task-1", autoReviewEnabled: true, updatedAt: 100 });
+		const harness = createHarness({ board: createBoard({ in_progress: [card] }) });
+		harness.terminal.setSessionState("task-1", state, 200);
+
+		await harness.evaluate();
+
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("in_progress");
+	});
+
+	it("does not bounce a card dragged back after its session finished", async () => {
+		const card = createCard({ id: "task-1", updatedAt: 300 });
+		const harness = createHarness({ board: createBoard({ in_progress: [card] }) });
+		harness.terminal.setSessionState("task-1", "awaiting_review", 200);
+
+		await harness.evaluate();
+
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("in_progress");
+	});
+
+	it("does not judge an armed card while its agent is still running", async () => {
+		const card = createCard({ id: "task-1", autoReviewEnabled: true, pendingGitAction: armedAt() });
+		const harness = createHarness({ board: createBoard({ review: [card] }) });
+		harness.setProbe("task-1", landedProbe);
+		harness.terminal.setSessionState("task-1", "running");
+
+		await harness.evaluate();
+
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("review");
+		expect(harness.probeTaskWorkspace).not.toHaveBeenCalled();
+	});
+
+	it("does not count discarded changes as a landing", async () => {
+		const card = createCard({
+			id: "task-1",
+			autoReviewEnabled: true,
+			pendingGitAction: armedAt({ hadUncommittedChanges: true }),
+		});
+		const harness = createHarness({ board: createBoard({ review: [card] }) });
+		harness.setProbe("task-1", { ...landedProbe, headCommit: "commit-1" });
+
+		await harness.evaluate();
+
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("review");
+		expect(harness.deleteTaskWorktree).not.toHaveBeenCalled();
+	});
+
+	const boardWithDependent = () => {
+		const board = createBoard({
+			backlog: [createCard({ id: "waiter" })],
+			review: [createCard({ id: "task-1", autoReviewEnabled: true, pendingGitAction: armedAt() })],
+		});
+		board.dependencies = [{ id: "dep-1", fromTaskId: "waiter", toTaskId: "task-1", createdAt: 0 }];
+		return board;
+	};
+
+	it("starts dependents once a card lands, with no client involved", async () => {
+		const harness = createHarness({ board: boardWithDependent() });
+		harness.setProbe("task-1", landedProbe);
+
+		await harness.evaluate();
+
+		expect(harness.startTask).toHaveBeenCalledTimes(1);
+		expect(harness.startTask).toHaveBeenCalledWith({ workspacePath: "/repo", taskId: "waiter" });
+	});
+
+	it("does not start dependents when the card has not landed", async () => {
+		const harness = createHarness({ board: boardWithDependent() });
+		harness.setProbe("task-1", { ...landedProbe, unlandedCommits: 1 });
+
+		await harness.evaluate();
+
+		expect(harness.startTask).not.toHaveBeenCalled();
+	});
+
+	it("keeps the landed card done when a dependent fails to start", async () => {
+		const harness = createHarness({
+			board: boardWithDependent(),
+			startTask: async () => {
+				throw new Error("no agent");
+			},
+		});
+		harness.setProbe("task-1", landedProbe);
+
+		await harness.evaluate();
+
+		expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("trash");
+		expect(harness.warn).toHaveBeenCalledWith(expect.stringContaining('"waiter"'));
+	});
+
+	describe("project check", () => {
+		const checkConfig = { command: "make test", timeoutMs: 60_000, maxRetries: 1 };
+		const dirtyProbe = {
+			exists: true,
+			headCommit: "commit-1",
+			changedFiles: 2,
+			unlandedCommits: 0,
+			stateToken: "s1",
+		};
+		const failure = { exitCode: 1, timedOut: false, output: "boom" };
+		const createCheckHarness = (config: typeof checkConfig | null = checkConfig) => {
+			const card = createCard({ id: "task-1", autoReviewEnabled: true });
+			const harness = createHarness({ board: createBoard({ review: [card] }), checkConfig: config });
+			harness.setProbe("task-1", dirtyProbe);
+			return harness;
+		};
+		const storedCard = (harness: ReturnType<typeof createHarness>) =>
+			findCardInBoard(harness.store.stored.board, "task-1")?.card;
+		const sentPrompts = (harness: ReturnType<typeof createHarness>) =>
+			harness.terminal.writeInput.mock.calls
+				.map(([, data]) => data.toString("utf8"))
+				.filter((text) => text !== "\r");
+
+		it("arms straight away when the project has no check", async () => {
+			const harness = createCheckHarness(null);
+
+			await harness.evaluate();
+
+			expect(harness.runCheck).not.toHaveBeenCalled();
+			expect(storedCard(harness)?.pendingGitAction).toBeTruthy();
+			expect(storedCard(harness)?.checkResult).toBeUndefined();
+		});
+
+		it("commits only after the check passes", async () => {
+			const harness = createCheckHarness();
+			let finish: (outcome: AutoReviewCheckOutcome) => void = () => undefined;
+			harness.runCheck.mockImplementationOnce(
+				() =>
+					new Promise((resolve) => {
+						finish = resolve;
+					}),
+			);
+
+			await harness.evaluate();
+			await harness.settle();
+			expect(storedCard(harness)?.checkResult?.status).toBe("running");
+			expect(storedCard(harness)?.pendingGitAction ?? null).toBeNull();
+			expect(harness.terminal.writeInput).not.toHaveBeenCalled();
+
+			// A cycle during the run neither blocks on it nor starts a second one.
+			await harness.evaluate();
+			expect(harness.runCheck).toHaveBeenCalledTimes(1);
+
+			finish({ exitCode: 0, timedOut: false, output: "ok" });
+			await harness.settle();
+
+			expect(storedCard(harness)?.checkResult).toMatchObject({ status: "passed", exitCode: 0, fingerprint: "s1" });
+			expect(storedCard(harness)?.pendingGitAction).toBeTruthy();
+			expect(sentPrompts(harness)).toEqual(["Commit the working changes onto main."]);
+			expect(harness.runCheck).toHaveBeenCalledTimes(1);
+		});
+
+		it("sends one failure back to the agent, then waits for the user", async () => {
+			const harness = createCheckHarness();
+			harness.runCheck.mockResolvedValue(failure);
+
+			await harness.evaluate();
+			await harness.settle();
+
+			expect(storedCard(harness)?.checkResult).toMatchObject({ status: "failed", retries: 1 });
+			expect(storedCard(harness)?.pendingGitAction ?? null).toBeNull();
+			expect(sentPrompts(harness)).toHaveLength(1);
+			expect(sentPrompts(harness)[0]).toContain("boom");
+			expect(sentPrompts(harness)[0]).toContain("make test");
+
+			// Nothing changed in the worktree: no second run and no second prompt.
+			await harness.evaluate();
+			await harness.settle();
+			expect(harness.runCheck).toHaveBeenCalledTimes(1);
+
+			// The agent's fix also fails: recorded, but no further tokens are spent.
+			harness.setProbe("task-1", { ...dirtyProbe, stateToken: "s2" });
+			await harness.evaluate();
+			await harness.settle();
+			expect(harness.runCheck).toHaveBeenCalledTimes(2);
+			expect(storedCard(harness)?.checkResult).toMatchObject({ status: "failed", retries: 1, fingerprint: "s2" });
+			expect(sentPrompts(harness)).toHaveLength(1);
+			expect(findCardInBoard(harness.store.stored.board, "task-1")?.columnId).toBe("review");
+		});
+
+		it("commits after the retry fixes the failure", async () => {
+			const harness = createCheckHarness();
+			harness.runCheck.mockResolvedValueOnce(failure);
+
+			await harness.evaluate();
+			await harness.settle();
+			harness.setProbe("task-1", { ...dirtyProbe, stateToken: "s2" });
+			await harness.evaluate();
+			await harness.settle();
+
+			expect(storedCard(harness)?.checkResult).toMatchObject({ status: "passed", retries: 0 });
+			expect(storedCard(harness)?.pendingGitAction).toBeTruthy();
+		});
+
+		it("does not check while the agent is still working", async () => {
+			const harness = createCheckHarness();
+			harness.terminal.setSessionState("task-1", "running");
+
+			await harness.evaluate();
+			await harness.settle();
+
+			expect(harness.runCheck).not.toHaveBeenCalled();
+			expect(storedCard(harness)?.pendingGitAction ?? null).toBeNull();
+		});
+
+		it("never prompts when retries are disabled", async () => {
+			const harness = createCheckHarness({ ...checkConfig, maxRetries: 0 });
+			harness.runCheck.mockResolvedValue(failure);
+
+			await harness.evaluate();
+			await harness.settle();
+
+			expect(storedCard(harness)?.checkResult?.status).toBe("failed");
+			expect(harness.terminal.writeInput).not.toHaveBeenCalled();
+		});
+
+		it("holds cards and warns once when the check config is invalid", async () => {
+			const harness = createCheckHarness();
+			harness.loadCheckConfig.mockRejectedValue(new Error("bad json"));
+
+			await harness.evaluate();
+			await harness.evaluate();
+
+			expect(harness.runCheck).not.toHaveBeenCalled();
+			expect(storedCard(harness)?.pendingGitAction ?? null).toBeNull();
+			expect(harness.warn).toHaveBeenCalledTimes(1);
+		});
+
+		it("reruns a check that a restart cut off", async () => {
+			const card = createCard({
+				id: "task-1",
+				autoReviewEnabled: true,
+				checkResult: {
+					status: "running",
+					command: "make test",
+					exitCode: null,
+					timedOut: false,
+					output: "",
+					fingerprint: null,
+					retries: 0,
+					startedAt: 1,
+					finishedAt: null,
+				},
+			});
+			const harness = createHarness({ board: createBoard({ review: [card] }), checkConfig });
+			harness.setProbe("task-1", dirtyProbe);
+
+			await harness.evaluate();
+			await harness.settle();
+
+			expect(harness.runCheck).toHaveBeenCalledTimes(1);
+			expect(storedCard(harness)?.pendingGitAction).toBeTruthy();
+		});
+
+		it("aborts a running check on shutdown and records nothing further", async () => {
+			const harness = createCheckHarness();
+			let signal: AbortSignal | null = null;
+			let finish: (outcome: AutoReviewCheckOutcome) => void = () => undefined;
+			harness.runCheck.mockImplementationOnce((input) => {
+				signal = input.signal;
+				return new Promise((resolve) => {
+					finish = resolve;
+				});
+			});
+
+			await harness.evaluate();
+			await harness.settle();
+			harness.reconciler.close();
+			expect((signal as AbortSignal | null)?.aborted).toBe(true);
+
+			finish({ exitCode: 0, timedOut: false, output: "" });
+			await harness.settle();
+			expect(storedCard(harness)?.checkResult?.status).toBe("running");
+			expect(harness.terminal.writeInput).not.toHaveBeenCalled();
+		});
 	});
 
 	it("stops re-prompting a card whose commits never land", async () => {
