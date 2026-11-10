@@ -168,7 +168,10 @@ export const runtimeTaskCheckResultSchema = z.object({
 	exitCode: z.number().int().nullable(),
 	timedOut: z.boolean(),
 	output: z.string(),
-	/** The worktree state this result describes; the check reruns when the worktree differs. */
+	/**
+	 * What this result describes: the worktree state for the check before the commit, the landed
+	 * HEAD commit for the done check. The check reruns when it differs.
+	 */
 	fingerprint: z.string().nullable(),
 	/** Failures already sent back to the task's agent. */
 	retries: z.number().int().nonnegative(),
@@ -197,6 +200,8 @@ export const runtimeBoardCardSchema = z
 		updatedAt: z.number(),
 		pendingGitAction: runtimeTaskPendingGitActionSchema.nullable().optional(),
 		checkResult: runtimeTaskCheckResultSchema.nullable().optional(),
+		/** The project's done check, run after the card's commit landed. A failure holds the card in review. */
+		doneCheckResult: runtimeTaskCheckResultSchema.nullable().optional(),
 	})
 	.transform(
 		({

@@ -221,6 +221,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		updatedAt?: unknown;
 		pendingGitAction?: unknown;
 		checkResult?: unknown;
+		doneCheckResult?: unknown;
 	};
 	const prompt = typeof card.prompt === "string" ? card.prompt.trim() : "";
 	if (!prompt) {
@@ -244,6 +245,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 	const now = Date.now();
 	const pendingGitAction = normalizeTaskPendingGitAction(card.pendingGitAction);
 	const checkResult = normalizeTaskCheckResult(card.checkResult);
+	const doneCheckResult = normalizeTaskCheckResult(card.doneCheckResult);
 
 	return {
 		id: typeof card.id === "string" && card.id ? card.id : createShortTaskId(createBrowserUuid),
@@ -262,6 +264,7 @@ function normalizeCard(rawCard: unknown): BoardCard | null {
 		updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : now,
 		...(pendingGitAction !== undefined ? { pendingGitAction } : {}),
 		...(checkResult !== undefined ? { checkResult } : {}),
+		...(doneCheckResult !== undefined ? { doneCheckResult } : {}),
 	};
 }
 

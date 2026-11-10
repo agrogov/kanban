@@ -11,7 +11,12 @@
 // workspace with no auto-review candidates costs zero git work.
 
 import type { ClineTaskSessionService } from "../cline-sdk/cline-task-session-service";
-import { type AutoReviewCheckConfig, loadAutoReviewCheckConfig } from "../config/auto-review-check-config";
+import {
+	type AutoReviewCheckConfig,
+	type AutoReviewDoneCheckConfig,
+	loadAutoReviewCheckConfig,
+	loadAutoReviewDoneCheckConfig,
+} from "../config/auto-review-check-config";
 import { isNativeChatAgentId } from "../core/agent-catalog";
 import type {
 	RuntimeAgentId,
@@ -39,6 +44,7 @@ import { deleteTaskWorktree as deleteTaskWorktreeFromDisk } from "../workspace/t
 import {
 	type AutoReviewCheckOutcome,
 	buildCheckFailurePrompt,
+	buildTaskCheckEnv,
 	type RunAutoReviewCheckInput,
 	runAutoReviewCheck,
 } from "./auto-review-check";
@@ -112,6 +118,10 @@ export interface CreateAutoReviewReconcilerDependencies {
 	loadCheckConfig?: (workspacePath: string) => Promise<AutoReviewCheckConfig | null>;
 	/** Runs the project's check command; defaults to the real implementation. */
 	runCheck?: (input: RunAutoReviewCheckInput) => Promise<AutoReviewCheckOutcome>;
+	/** Reads the project's done check, run after a card's commit landed; defaults to the project config file. */
+	loadDoneCheckConfig?: (workspacePath: string) => Promise<AutoReviewDoneCheckConfig | null>;
+	/** Runs the project's done check; defaults to the real implementation. */
+	runDoneCheck?: (input: RunAutoReviewCheckInput) => Promise<AutoReviewCheckOutcome>;
 	evaluationIntervalMs?: number;
 	now?: () => number;
 	warn?: (message: string) => void;
@@ -140,8 +150,12 @@ interface ReconcilerWorkspaceRuntime {
 	lastDoneWorktreeSweepAt: number;
 	/** Project checks currently running, so a cycle never starts a second one for the same card. */
 	checksInFlight: Map<string, AbortController>;
+	/** Done checks currently running, keyed by card id like `checksInFlight`. */
+	doneChecksInFlight: Map<string, AbortController>;
 	/** Last reported problem with the check config, so a broken file warns once rather than every cycle. */
 	checkConfigError: string | null;
+	/** The same for the done check config. */
+	doneCheckConfigError: string | null;
 }
 
 /** Each attempt bounces the card review -> in_progress -> review, so stop after a few. */
@@ -157,15 +171,18 @@ function createWorkspaceRuntime(): ReconcilerWorkspaceRuntime {
 		gitActionAttemptsByTaskId: new Map(),
 		lastDoneWorktreeSweepAt: 0,
 		checksInFlight: new Map(),
+		doneChecksInFlight: new Map(),
 		checkConfigError: null,
+		doneCheckConfigError: null,
 	};
 }
 
 function abortRunningChecks(runtime: ReconcilerWorkspaceRuntime): void {
-	for (const controller of runtime.checksInFlight.values()) {
+	for (const controller of [...runtime.checksInFlight.values(), ...runtime.doneChecksInFlight.values()]) {
 		controller.abort();
 	}
 	runtime.checksInFlight.clear();
+	runtime.doneChecksInFlight.clear();
 }
 
 function resolveAutoReviewMode(card: RuntimeBoardCard): RuntimeTaskAutoReviewMode {
@@ -239,6 +256,8 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 	const probeTaskWorkspace = deps.probeTaskWorkspace ?? probeTaskLanding;
 	const loadCheckConfig = deps.loadCheckConfig ?? loadAutoReviewCheckConfig;
 	const runCheck = deps.runCheck ?? runAutoReviewCheck;
+	const loadDoneCheckConfig = deps.loadDoneCheckConfig ?? loadAutoReviewDoneCheckConfig;
+	const runDoneCheck = deps.runDoneCheck ?? runAutoReviewCheck;
 	let disposed = false;
 	let evaluationTimer: NodeJS.Timeout | null = null;
 
@@ -441,6 +460,23 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 		return response.value;
 	};
 
+	const writeDoneCheckResult = async (
+		workspacePath: string,
+		taskId: string,
+		doneCheckResult: RuntimeTaskCheckResult,
+	): Promise<void> => {
+		await deps.mutateWorkspaceState(workspacePath, (currentState) => {
+			const location = findCardLocation(currentState.board, taskId);
+			if (!location) {
+				return { board: currentState.board, value: undefined, save: false };
+			}
+			return {
+				board: replaceBoardCard(currentState.board, taskId, { ...location.card, doneCheckResult }),
+				value: undefined,
+			};
+		});
+	};
+
 	const notifyBoardMutated = async (workspaceId: string, workspacePath: string): Promise<void> => {
 		try {
 			await deps.onBoardMutated?.(workspaceId, workspacePath);
@@ -622,6 +658,7 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 				command: config.command,
 				timeoutMs: config.timeoutMs,
 				signal: controller.signal,
+				env: buildTaskCheckEnv({ workspacePath, taskId: card.id, title: card.title, baseRef: card.baseRef }),
 			});
 			if (controller.signal.aborted) {
 				return;
@@ -663,6 +700,73 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 			runtime.checksInFlight.delete(card.id);
 		}
 		// Only after a recorded result: re-evaluating after a failed write would spin without any delay.
+		if (recorded && !disposed && workspaceRuntimes.get(workspace.workspaceId) === runtime) {
+			void evaluateWorkspace(workspace.workspaceId);
+		}
+	};
+
+	// The done check runs once the card's commit has landed, before the card moves to done and its
+	// dependents start. Its result is only recorded: nothing goes back to the agent, because the work
+	// is already committed. A failure holds the card in review until a new commit lands or a person
+	// moves it. Detached for the same reason as `runProjectCheck`.
+	const runProjectDoneCheck = async (input: {
+		workspace: AutoReviewWorkspace;
+		workspacePath: string;
+		card: RuntimeBoardCard;
+		headCommit: string | null;
+		config: AutoReviewDoneCheckConfig;
+		runtime: ReconcilerWorkspaceRuntime;
+	}): Promise<void> => {
+		const { workspace, workspacePath, card, headCommit, config, runtime } = input;
+		const controller = new AbortController();
+		runtime.doneChecksInFlight.set(card.id, controller);
+		const startedAt = deps.now?.() ?? Date.now();
+		const base = { command: config.command, retries: 0, fingerprint: headCommit, startedAt };
+		let recorded = false;
+		try {
+			await writeDoneCheckResult(workspacePath, card.id, {
+				...base,
+				status: "running",
+				exitCode: null,
+				timedOut: false,
+				output: "",
+				finishedAt: null,
+			});
+			await notifyBoardMutated(workspace.workspaceId, workspacePath);
+			const outcome = await runDoneCheck({
+				workspacePath,
+				taskId: card.id,
+				baseRef: card.baseRef,
+				command: config.command,
+				timeoutMs: config.timeoutMs,
+				signal: controller.signal,
+				env: buildTaskCheckEnv({ workspacePath, taskId: card.id, title: card.title, baseRef: card.baseRef }),
+			});
+			if (controller.signal.aborted) {
+				return;
+			}
+			const passed = outcome.exitCode === 0 && !outcome.timedOut;
+			await writeDoneCheckResult(workspacePath, card.id, {
+				...base,
+				status: passed ? "passed" : "failed",
+				exitCode: outcome.exitCode,
+				timedOut: outcome.timedOut,
+				output: outcome.output,
+				finishedAt: deps.now?.() ?? Date.now(),
+			});
+			recorded = true;
+			await notifyBoardMutated(workspace.workspaceId, workspacePath);
+			if (!passed) {
+				deps.warn?.(
+					`Auto-review is holding task "${card.id}" in review: its done check failed (${config.command}). ` +
+						"Cards linked after it wait until a new commit lands and passes, or it is moved to done by hand.",
+				);
+			}
+		} catch (error) {
+			deps.warn?.(`Auto-review could not run the done check of task "${card.id}": ${String(error)}`);
+		} finally {
+			runtime.doneChecksInFlight.delete(card.id);
+		}
 		if (recorded && !disposed && workspaceRuntimes.get(workspace.workspaceId) === runtime) {
 			void evaluateWorkspace(workspace.workspaceId);
 		}
@@ -771,6 +875,27 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 				return checkConfigPromise;
 			};
 
+			let doneCheckConfigPromise: Promise<AutoReviewDoneCheckConfig | null | "invalid"> | null = null;
+			const getDoneCheckConfig = (): Promise<AutoReviewDoneCheckConfig | null | "invalid"> => {
+				doneCheckConfigPromise ??= loadDoneCheckConfig(workspacePath).then(
+					(config) => {
+						runtime.doneCheckConfigError = null;
+						return config;
+					},
+					(error: unknown) => {
+						const message = String(error);
+						if (runtime.doneCheckConfigError !== message) {
+							runtime.doneCheckConfigError = message;
+							deps.warn?.(
+								`Auto-review is holding landed cards because the done check config is invalid: ${message}`,
+							);
+						}
+						return "invalid" as const;
+					},
+				);
+				return doneCheckConfigPromise;
+			};
+
 			for (const card of candidates) {
 				if (!stillTracked()) {
 					break;
@@ -794,6 +919,35 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 						(pendingGitAction.hadUncommittedChanges !== true ||
 							probe.headCommit !== pendingGitAction.headCommitAtRequest);
 					if (landed) {
+						const doneCheckConfig = await getDoneCheckConfig();
+						if (doneCheckConfig === "invalid") {
+							continue;
+						}
+						if (doneCheckConfig) {
+							if (runtime.doneChecksInFlight.has(card.id)) {
+								continue;
+							}
+							const previous = card.doneCheckResult ?? null;
+							const previousIsCurrent =
+								previous !== null &&
+								previous.status !== "running" &&
+								previous.fingerprint === (probe.headCommit ?? null);
+							if (!previousIsCurrent) {
+								void runProjectDoneCheck({
+									workspace,
+									workspacePath,
+									card,
+									headCommit: probe.headCommit ?? null,
+									config: doneCheckConfig,
+									runtime,
+								});
+								continue;
+							}
+							// Held while armed: the stale-action timeout only applies to work that has not landed.
+							if (previous.status !== "passed") {
+								continue;
+							}
+						}
 						const readyTaskIds = stillTracked()
 							? await completePendingGitAction(workspacePath, card.id, timestamp)
 							: null;

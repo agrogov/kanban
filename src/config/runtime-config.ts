@@ -30,8 +30,9 @@ interface RuntimeGlobalConfigFileShape {
 interface RuntimeProjectConfigFileShape {
 	shortcuts?: RuntimeProjectShortcut[];
 	worktreeSharedDirectories?: string[];
-	/** Validated where it is used, by `auto-review-check-config`. Kept here so saves do not drop it. */
+	/** Validated where they are used, by `auto-review-check-config`. Kept here so saves do not drop them. */
 	autoReviewCheck?: unknown;
+	autoReviewDoneCheck?: unknown;
 }
 
 export interface RuntimeConfigState {
@@ -500,6 +501,9 @@ async function writeRuntimeProjectConfigFile(
 	}
 	if (existing?.autoReviewCheck !== undefined) {
 		payload.autoReviewCheck = existing.autoReviewCheck;
+	}
+	if (existing?.autoReviewDoneCheck !== undefined) {
+		payload.autoReviewDoneCheck = existing.autoReviewDoneCheck;
 	}
 
 	if (Object.keys(payload).length === 0) {

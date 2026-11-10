@@ -486,7 +486,7 @@ describe.sequential("runtime-config auto agent selection", () => {
 		}
 	});
 
-	it("preserves autoReviewCheck when shortcuts are saved", async () => {
+	it("preserves autoReviewCheck and autoReviewDoneCheck when shortcuts are saved", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-runtime-config-preserve-check-");
 		const { path: tempProject, cleanup: cleanupProject } = createTempDir(
 			"kanban-project-runtime-config-preserve-check-",
@@ -496,7 +496,12 @@ describe.sequential("runtime-config auto agent selection", () => {
 			const runtimeProjectConfigDir = join(tempProject, ".cline", "kanban");
 			mkdirSync(runtimeProjectConfigDir, { recursive: true });
 			const autoReviewCheck = { command: "npm test", maxRetries: 0 };
-			writeFileSync(join(runtimeProjectConfigDir, "config.json"), JSON.stringify({ autoReviewCheck }), "utf8");
+			const autoReviewDoneCheck = { command: "sh check.sh", timeoutMinutes: 2 };
+			writeFileSync(
+				join(runtimeProjectConfigDir, "config.json"),
+				JSON.stringify({ autoReviewCheck, autoReviewDoneCheck }),
+				"utf8",
+			);
 
 			await withTemporaryEnv({ home: tempHome }, async () => {
 				await saveRuntimeConfig(tempProject, {
@@ -511,8 +516,10 @@ describe.sequential("runtime-config auto agent selection", () => {
 
 				const payload = JSON.parse(readFileSync(join(runtimeProjectConfigDir, "config.json"), "utf8")) as {
 					autoReviewCheck?: unknown;
+					autoReviewDoneCheck?: unknown;
 				};
 				expect(payload.autoReviewCheck).toEqual(autoReviewCheck);
+				expect(payload.autoReviewDoneCheck).toEqual(autoReviewDoneCheck);
 			});
 		} finally {
 			cleanupProject();

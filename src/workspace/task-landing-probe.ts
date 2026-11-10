@@ -66,6 +66,9 @@ export function describeDoneMoveBlocker(card: RuntimeBoardCard, probe: TaskLandi
 	if (card.checkResult?.status === "failed") {
 		return `its check failed (${card.checkResult.command})`;
 	}
+	if (card.doneCheckResult?.status === "failed") {
+		return `its done check failed (${card.doneCheckResult.command})`;
+	}
 	return null;
 }
 

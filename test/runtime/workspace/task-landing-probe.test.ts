@@ -41,4 +41,10 @@ describe("describeDoneMoveBlocker", () => {
 	it("blocks a failed check", () => {
 		expect(describeDoneMoveBlocker({ ...card, checkResult: failedCheck }, landed)).toContain("make test");
 	});
+
+	it("blocks a failed done check", () => {
+		expect(
+			describeDoneMoveBlocker({ ...card, doneCheckResult: { ...failedCheck, command: "sh notes.sh" } }, landed),
+		).toContain("done check failed (sh notes.sh)");
+	});
 });

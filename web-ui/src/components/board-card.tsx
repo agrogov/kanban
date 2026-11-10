@@ -824,6 +824,16 @@ export function BoardCard({
 								</p>
 							) : null}
 							{card.checkResult?.status === "running" ? <p className="text-xs mt-1">Running check…</p> : null}
+							{card.doneCheckResult?.status === "failed" ? (
+								<p className="text-xs text-status-red mt-1" title={card.doneCheckResult.output}>
+									{card.doneCheckResult.timedOut
+										? "Done check timed out, linked cards wait"
+										: `Done check failed (exit ${card.doneCheckResult.exitCode ?? "none"}), linked cards wait`}
+								</p>
+							) : null}
+							{card.doneCheckResult?.status === "running" ? (
+								<p className="text-xs mt-1">Running done check…</p>
+							) : null}
 							{showReviewGitActions ? (
 								<div className="flex gap-1.5 mt-1.5">
 									<Button

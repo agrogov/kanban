@@ -148,6 +148,7 @@ If the user asks you to write code, fix a bug, implement a feature, refactor, or
 - Kanban also supports linking tasks. Linking is useful both for parallelization and for dependencies: when work is easy to decompose into multiple pieces that can be done in parallel, link multiple backlog tasks to the same dependency so they all become ready to start once that dependency finishes; when one piece of work depends on another, use links to represent that follow-on dependency. If both linked tasks are in backlog, Kanban preserves the order you pass to the command: \`--task-id\` waits on \`--linked-task-id\`, and on the board the arrow points into \`--linked-task-id\`. Once only one linked task remains in backlog, Kanban reorients the saved dependency so the backlog task is the waiting dependent task and the other task is the prerequisite. The board arrow points into the prerequisite task so the user can see what must finish first. A link requires at least one backlog task, and when the linked review task is moved to done, that backlog task becomes ready to start.
 - How linking works: when a task in the review column is moved to done, any linked backlog tasks automatically start. This is how you chain work so tasks kick off autonomously without manual intervention.
 - Tasks can also enable automatic review actions: auto-commit or auto-open-pr once completed, which then moves the task to done and kicks off any linked tasks. Combining auto-review with linking is how you can set up fully autonomous pipelines when the user wants it. For example, enabling auto-commit on each task in a chain: task A finishes, auto-commits and is moved to done, task B auto-starts from backlog, auto-commits and is moved to done, task C auto-starts, and so on.
+- A project can gate those pipelines with commands in its \`.cline/kanban/config.json\`: \`autoReviewCheck\` runs before an auto-review card is committed (a failure goes back to the task's agent), and \`autoReviewDoneCheck\` runs after the card's commit has landed. A failed done check sends nothing to the agent: the card stays in review, so its linked tasks do not start, and \`task list\` shows the command's output in the card's \`doneCheckResult\`. Kanban runs the done check again when a new commit from that card lands. Tell the user when a card is held this way, and don't move it to done with \`--force\` unless they accept that its linked tasks will start on top of it.
 - If your current working directory is inside \`.cline/worktrees/\`, you are inside a Kanban task worktree. In that case, create or manage tasks against the main workspace path, not the task worktree path. Pass the main workspace with \`--project-path\`.
 - If a task command fails because the runtime is unavailable, tell the user to start Kanban in that workspace first with \`${kanbanCommand}\` (never run it yourself: launching Kanban opens a browser tab), then retry the task command.
 
@@ -252,7 +253,7 @@ Each entry contains:
 
 ## task done
 
-Purpose: move a task or an entire column to \`done\`, stop active sessions if needed, clean up task worktrees, and auto-start any linked backlog tasks that become ready. Refuses, moving nothing, when a task has commits that have not landed on its base ref, uncommitted changes, or a failed project check.
+Purpose: move a task or an entire column to \`done\`, stop active sessions if needed, clean up task worktrees, and auto-start any linked backlog tasks that become ready. Refuses, moving nothing, when a task has commits that have not landed on its base ref, uncommitted changes, a failed project check, or a failed done check.
 
 Command:
 \`${kanbanCommand} task done (--task-id <task_id> | --column backlog|in_progress|review|done) [--force] [--project-path <path>]\`
@@ -338,7 +339,7 @@ Parameters:
 
 Notes:
 - Allowed moves: \`backlog\` -> \`in_progress\` | \`done\`; \`in_progress\` -> \`backlog\` | \`review\` | \`done\`; \`review\` -> \`in_progress\` | \`done\`; \`done\` -> \`review\`.
-- Moving to \`done\` reuses the \`task done\` workflow: it stops the session, cleans up the task worktree, starts linked tasks that become ready, and refuses unlanded work unless \`--force\` is given.
+- Moving to \`done\` reuses the \`task done\` workflow: it stops the session, cleans up the task worktree, starts linked tasks that become ready, and refuses unlanded work or a failed check or done check unless \`--force\` is given.
 - Requeueing out of \`in_progress\` or \`review\` to \`backlog\` stops any live session *before* moving the card, and reports \`sessionStopped\` in the result. If the session cannot be stopped the card is left where it is and the command fails, so a requeued card never has an agent still writing to its worktree.
 
 # Per-Task Agent, Provider, Model, and Effort Overrides

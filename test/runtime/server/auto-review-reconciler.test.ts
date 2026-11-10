@@ -9,7 +9,7 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeWorkspaceStateResponse,
 } from "../../../src/core/api-contract";
-import type { AutoReviewCheckOutcome } from "../../../src/server/auto-review-check";
+import type { AutoReviewCheckOutcome, RunAutoReviewCheckInput } from "../../../src/server/auto-review-check";
 import type {
 	AutoReviewTaskProbe,
 	CreateAutoReviewReconcilerDependencies,
@@ -152,6 +152,7 @@ interface HarnessOptions {
 	promptTemplates?: TaskGitPromptTemplates;
 	now?: () => number;
 	checkConfig?: { command: string; timeoutMs: number; maxRetries: number } | null;
+	doneCheckConfig?: { command: string; timeoutMs: number } | null;
 	startTask?: (input: { workspacePath: string; taskId: string }) => Promise<unknown>;
 }
 
@@ -174,6 +175,14 @@ function createHarness(options: HarnessOptions) {
 	const loadCheckConfig = vi.fn(async () => options.checkConfig ?? null);
 	const runCheck = vi.fn(
 		async (_input: { signal: AbortSignal }): Promise<AutoReviewCheckOutcome> => ({
+			exitCode: 0,
+			timedOut: false,
+			output: "",
+		}),
+	);
+	const loadDoneCheckConfig = vi.fn(async () => options.doneCheckConfig ?? null);
+	const runDoneCheck = vi.fn(
+		async (_input: RunAutoReviewCheckInput): Promise<AutoReviewCheckOutcome> => ({
 			exitCode: 0,
 			timedOut: false,
 			output: "",
@@ -206,6 +215,8 @@ function createHarness(options: HarnessOptions) {
 		startTask,
 		loadCheckConfig,
 		runCheck,
+		loadDoneCheckConfig,
+		runDoneCheck,
 		...(options.now ? { now: options.now } : {}),
 		warn,
 	};
@@ -223,6 +234,8 @@ function createHarness(options: HarnessOptions) {
 		startTask,
 		loadCheckConfig,
 		runCheck,
+		loadDoneCheckConfig,
+		runDoneCheck,
 		/** Lets a detached project check finish and the follow-up evaluation it schedules run. */
 		async settle() {
 			for (let flush = 0; flush < 10; flush += 1) {
@@ -914,6 +927,144 @@ describe("auto-review reconciler", () => {
 			await harness.settle();
 			expect(storedCard(harness)?.checkResult?.status).toBe("running");
 			expect(harness.terminal.writeInput).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("done check", () => {
+		const doneCheckConfig = { command: "sh check-notes.sh", timeoutMs: 60_000 };
+		const failure = { exitCode: 1, timedOut: false, output: "STATUS: BLOCKED" };
+		const createDoneHarness = (config: typeof doneCheckConfig | null = doneCheckConfig) => {
+			const harness = createHarness({ board: boardWithDependent(), doneCheckConfig: config });
+			harness.setProbe("task-1", landedProbe);
+			return harness;
+		};
+		const location = (harness: ReturnType<typeof createHarness>) =>
+			findCardInBoard(harness.store.stored.board, "task-1");
+
+		it("lands as before when the project has no done check", async () => {
+			const harness = createDoneHarness(null);
+
+			await harness.evaluate();
+
+			expect(harness.runDoneCheck).not.toHaveBeenCalled();
+			expect(location(harness)?.columnId).toBe("trash");
+			expect(location(harness)?.card.doneCheckResult).toBeUndefined();
+			expect(harness.startTask).toHaveBeenCalledWith({ workspacePath: "/repo", taskId: "waiter" });
+		});
+
+		it("moves the card to done and starts dependents only after the done check passes", async () => {
+			const harness = createDoneHarness();
+			let finish: (outcome: AutoReviewCheckOutcome) => void = () => undefined;
+			harness.runDoneCheck.mockImplementationOnce(
+				() =>
+					new Promise((resolve) => {
+						finish = resolve;
+					}),
+			);
+
+			await harness.evaluate();
+			await harness.settle();
+			expect(location(harness)?.columnId).toBe("review");
+			expect(location(harness)?.card.doneCheckResult?.status).toBe("running");
+			expect(harness.startTask).not.toHaveBeenCalled();
+			expect(harness.deleteTaskWorktree).not.toHaveBeenCalled();
+
+			await harness.evaluate();
+			expect(harness.runDoneCheck).toHaveBeenCalledTimes(1);
+
+			finish({ exitCode: 0, timedOut: false, output: "ok" });
+			await harness.settle();
+
+			expect(location(harness)?.columnId).toBe("trash");
+			expect(location(harness)?.card.doneCheckResult).toMatchObject({ status: "passed", fingerprint: "commit-2" });
+			expect(harness.startTask).toHaveBeenCalledWith({ workspacePath: "/repo", taskId: "waiter" });
+			expect(harness.deleteTaskWorktree).toHaveBeenCalledTimes(1);
+		});
+
+		it("tells the command which card it judges", async () => {
+			const harness = createDoneHarness();
+
+			await harness.evaluate();
+			await harness.settle();
+
+			expect(harness.runDoneCheck.mock.calls[0]?.[0]).toMatchObject({
+				taskId: "task-1",
+				command: "sh check-notes.sh",
+				env: { KANBAN_TASK_ID: "task-1", KANBAN_TASK_TITLE: "Task task-1", KANBAN_BASE_REF: "main" },
+			});
+		});
+
+		it("holds a failed card in review without prompting its agent or starting dependents", async () => {
+			const harness = createDoneHarness();
+			harness.runDoneCheck.mockResolvedValue(failure);
+
+			await harness.evaluate();
+			await harness.settle();
+			await harness.evaluate();
+			await harness.settle();
+
+			expect(harness.runDoneCheck).toHaveBeenCalledTimes(1);
+			expect(location(harness)?.columnId).toBe("review");
+			expect(location(harness)?.card.doneCheckResult).toMatchObject({ status: "failed", exitCode: 1 });
+			expect(harness.startTask).not.toHaveBeenCalled();
+			expect(harness.deleteTaskWorktree).not.toHaveBeenCalled();
+			expect(harness.terminal.writeInput).not.toHaveBeenCalled();
+			expect(harness.warn).toHaveBeenCalledWith(expect.stringContaining("done check failed"));
+		});
+
+		it("re-runs the done check when a new commit lands", async () => {
+			const harness = createDoneHarness();
+			harness.runDoneCheck.mockResolvedValueOnce(failure);
+
+			await harness.evaluate();
+			await harness.settle();
+			expect(location(harness)?.columnId).toBe("review");
+
+			harness.setProbe("task-1", { ...landedProbe, headCommit: "commit-3" });
+			await harness.evaluate();
+			await harness.settle();
+
+			expect(harness.runDoneCheck).toHaveBeenCalledTimes(2);
+			expect(location(harness)?.columnId).toBe("trash");
+			expect(harness.startTask).toHaveBeenCalledWith({ workspacePath: "/repo", taskId: "waiter" });
+		});
+
+		it("holds landed cards and warns once when the done check config is invalid", async () => {
+			const harness = createDoneHarness();
+			harness.loadDoneCheckConfig.mockRejectedValue(new Error("bad json"));
+
+			await harness.evaluate();
+			await harness.evaluate();
+
+			expect(harness.runDoneCheck).not.toHaveBeenCalled();
+			expect(location(harness)?.columnId).toBe("review");
+			expect(harness.startTask).not.toHaveBeenCalled();
+			expect(
+				harness.warn.mock.calls.filter(([message]) => String(message).includes("done check config")),
+			).toHaveLength(1);
+		});
+
+		it("aborts a running done check on shutdown and records nothing further", async () => {
+			const harness = createDoneHarness();
+			let signal: AbortSignal | null = null;
+			let finish: (outcome: AutoReviewCheckOutcome) => void = () => undefined;
+			harness.runDoneCheck.mockImplementationOnce((input) => {
+				signal = input.signal;
+				return new Promise((resolve) => {
+					finish = resolve;
+				});
+			});
+
+			await harness.evaluate();
+			await harness.settle();
+			harness.reconciler.close();
+			expect((signal as AbortSignal | null)?.aborted).toBe(true);
+
+			finish({ exitCode: 0, timedOut: false, output: "" });
+			await harness.settle();
+			expect(location(harness)?.columnId).toBe("review");
+			expect(location(harness)?.card.doneCheckResult?.status).toBe("running");
+			expect(harness.startTask).not.toHaveBeenCalled();
 		});
 	});
 

@@ -11,6 +11,19 @@ describe("runCheckCommand", () => {
 		await expect(run("echo fine")).resolves.toEqual({ exitCode: 0, timedOut: false, output: "fine\n" });
 	});
 
+	it("adds the card's variables to the environment", async () => {
+		const outcome = await runCheckCommand({
+			cwd: process.cwd(),
+			command: 'echo "$KANBAN_TASK_TITLE|$PATH"',
+			timeoutMs: 10_000,
+			signal: new AbortController().signal,
+			env: { KANBAN_TASK_TITLE: "J43 tooling" },
+		});
+
+		expect(outcome.output.startsWith("J43 tooling|")).toBe(true);
+		expect(outcome.output.trim().length).toBeGreaterThan("J43 tooling|".length);
+	});
+
 	it("reports the exit code and includes stderr", async () => {
 		const outcome = await run("echo broken 1>&2; exit 3");
 

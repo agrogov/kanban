@@ -25,6 +25,23 @@ export interface RunAutoReviewCheckInput {
 	command: string;
 	timeoutMs: number;
 	signal: AbortSignal;
+	/** Added to the runtime's environment, so a command can tell which card it is judging. */
+	env?: Record<string, string>;
+}
+
+/** What a check command learns about its card. The title is the one shown on the board. */
+export function buildTaskCheckEnv(input: {
+	workspacePath: string;
+	taskId: string;
+	title: string;
+	baseRef: string;
+}): Record<string, string> {
+	return {
+		KANBAN_TASK_ID: input.taskId,
+		KANBAN_TASK_TITLE: input.title,
+		KANBAN_BASE_REF: input.baseRef,
+		KANBAN_PROJECT_PATH: input.workspacePath,
+	};
 }
 
 function toPrintableTail(text: string): string {
@@ -55,10 +72,12 @@ export function runCheckCommand(input: {
 	command: string;
 	timeoutMs: number;
 	signal: AbortSignal;
+	env?: Record<string, string>;
 }): Promise<AutoReviewCheckOutcome> {
 	return new Promise((resolve) => {
 		const child = spawn(input.command, {
 			cwd: input.cwd,
+			env: input.env ? { ...process.env, ...input.env } : process.env,
 			shell: true,
 			detached: process.platform !== "win32",
 			stdio: ["ignore", "pipe", "pipe"],
@@ -128,6 +147,7 @@ export async function runAutoReviewCheck(input: RunAutoReviewCheckInput): Promis
 		command: input.command,
 		timeoutMs: input.timeoutMs,
 		signal: input.signal,
+		env: input.env,
 	});
 }
 

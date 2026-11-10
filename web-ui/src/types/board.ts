@@ -58,6 +58,7 @@ export interface BoardCard {
 	updatedAt: number;
 	pendingGitAction?: TaskPendingGitAction | null;
 	checkResult?: TaskCheckResult | null;
+	doneCheckResult?: TaskCheckResult | null;
 }
 
 export interface BoardColumn {

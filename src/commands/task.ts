@@ -388,6 +388,7 @@ function formatTaskRecord(
 		...(task.agentId ? { agentId: task.agentId } : {}),
 		...formatTaskAgentSettings(task.agentSettings),
 		...(task.checkResult ? { checkResult: task.checkResult } : {}),
+		...(task.doneCheckResult ? { doneCheckResult: task.doneCheckResult } : {}),
 		createdAt: task.createdAt,
 		updatedAt: task.updatedAt,
 		session: session
@@ -1136,7 +1137,7 @@ export async function assertTasksLanded(
 	if (blockers.length > 0) {
 		throw new Error(
 			`Nothing was moved to done.\n${blockers.join("\n")}\n` +
-				"Land the work first, or pass --force to move it anyway. `task trash` discards a task on purpose.",
+				"Land the work and pass its checks first, or pass --force to move it anyway. `task trash` discards a task on purpose.",
 		);
 	}
 }
@@ -1604,7 +1605,10 @@ export function registerTaskCommand(program: Command): void {
 			.command("done")
 			.description("Move a task or an entire column to done, refusing work that has not landed on its base ref."),
 	)
-		.option("--force", "Move to done even with unlanded commits, uncommitted changes or a failed check.")
+		.option(
+			"--force",
+			"Move to done even with unlanded commits, uncommitted changes, or a failed check or done check.",
+		)
 		.action(async (options: { taskId?: string; column?: ListTaskColumn; projectPath?: string; force?: boolean }) => {
 			await runTaskCommand(
 				async () =>
@@ -1733,7 +1737,10 @@ export function registerTaskCommand(program: Command): void {
 			parseListColumn,
 		)
 		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
-		.option("--force", "With --column done: move even with unlanded commits, uncommitted changes or a failed check.")
+		.option(
+			"--force",
+			"With --column done: move even with unlanded commits, uncommitted changes, or a failed check or done check.",
+		)
 		.addHelpText(
 			"after",
 			[
@@ -1747,7 +1754,8 @@ export function registerTaskCommand(program: Command): void {
 				"Use `move --column backlog` to requeue a card whose session died.",
 				"Moving to done reuses the `task done` workflow (stops the session,",
 				"cleans up the worktree, and starts linked tasks that become ready),",
-				"and refuses work that has not landed unless --force is given.",
+				"and refuses work that has not landed, or whose check or done check",
+				"failed, unless --force is given.",
 				"",
 			].join("\n"),
 		)
