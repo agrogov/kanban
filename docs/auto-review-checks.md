@@ -33,13 +33,13 @@ Use the done check when a card can finish "successfully" in Kanban's eyes while 
 
 - The result is stored on the card as `doneCheckResult`, with the same fields as `checkResult`: `status` (`running`, `passed` or `failed`), `exitCode`, `timedOut`, `output`, `command`, `startedAt`, `finishedAt`. Its `fingerprint` is the landed commit.
 - The board card shows "Running done check…", "Done check failed (exit N), linked cards wait" or "Done check timed out, linked cards wait". `kanban task list` prints the full result.
-- Kanban runs the check once per landed commit. A held card stays in review with auto-review on. If more work from the card lands, Kanban checks the new commit.
+- Kanban runs the check once per landed commit and command. A held card stays in review with auto-review on. If more work from the card lands, or the configured command changes, Kanban runs the check again.
 - If `autoReviewDoneCheck` is present but invalid, Kanban holds every landed card and logs one warning until the config is fixed.
 
 To release a held card, choose one:
 
 - Fix the problem and land a new commit from the card (for example, ask its agent). The check runs again on it.
-- Fix the check or its config. Kanban reads the config live, but it does not rerun a check that already ran on the same commit. A new commit, or `--force`, is needed.
+- Fix the check's command in the config. Kanban reads the config live and reruns a check whose command changed. If the command stays the same (for example, you fixed a script it calls), a new commit or `--force` is needed.
 - Accept the result as it is: `kanban task done --task-id <id> --force` (or `task move ... --column done --force`). Its linked cards then start.
 
 `kanban task done` and `task move` to done refuse a card whose done check failed, unless `--force` is given. Dragging a card to done in the web UI is a manual decision and is not checked.

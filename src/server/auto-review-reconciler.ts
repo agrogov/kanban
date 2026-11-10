@@ -931,7 +931,9 @@ export function createAutoReviewReconciler(deps: CreateAutoReviewReconcilerDepen
 							const previousIsCurrent =
 								previous !== null &&
 								previous.status !== "running" &&
-								previous.fingerprint === (probe.headCommit ?? null);
+								previous.fingerprint === (probe.headCommit ?? null) &&
+								// A fixed check command judges the same commit again, so a wrong verdict needs no --force.
+								previous.command === doneCheckConfig.command;
 							if (!previousIsCurrent) {
 								void runProjectDoneCheck({
 									workspace,

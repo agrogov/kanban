@@ -1029,6 +1029,27 @@ describe("auto-review reconciler", () => {
 			expect(harness.startTask).toHaveBeenCalledWith({ workspacePath: "/repo", taskId: "waiter" });
 		});
 
+		it("re-runs the done check on the same commit when the command changes", async () => {
+			const harness = createDoneHarness();
+			harness.runDoneCheck.mockResolvedValueOnce(failure);
+
+			await harness.evaluate();
+			await harness.settle();
+			await harness.evaluate();
+			await harness.settle();
+			expect(harness.runDoneCheck).toHaveBeenCalledTimes(1);
+
+			harness.loadDoneCheckConfig.mockResolvedValue({ ...doneCheckConfig, command: "sh check-notes.sh --fixed" });
+			await harness.evaluate();
+			await harness.settle();
+
+			expect(harness.runDoneCheck).toHaveBeenCalledTimes(2);
+			expect(harness.runDoneCheck).toHaveBeenLastCalledWith(
+				expect.objectContaining({ command: "sh check-notes.sh --fixed" }),
+			);
+			expect(location(harness)?.columnId).toBe("trash");
+		});
+
 		it("holds landed cards and warns once when the done check config is invalid", async () => {
 			const harness = createDoneHarness();
 			harness.loadDoneCheckConfig.mockRejectedValue(new Error("bad json"));
