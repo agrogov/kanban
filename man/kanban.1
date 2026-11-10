@@ -81,6 +81,28 @@ Subcommands:
 .B --task-id
 .RI " " id
 .RI [ --project-path " " path ]
+.br
+.B done
+.RB [ --task-id
+.IR id ]
+.RI [ --column " " backlog|in_progress|review ]
+.RI [ --project-path " " path ]
+.RB [ --force ]
+.br
+.B move
+.B --task-id
+.RI " " id
+.B --column
+.RI " " backlog|in_progress|review|done
+.RI [ --project-path " " path ]
+.RB [ --force ]
+
+.B done
+and
+.B move
+to done refuse work that has not landed on its base ref, a failed project check, or a failed done check, unless
+.B --force
+is given. Moving a task to done starts the tasks linked after it.
 
 All task commands return JSON.
 
@@ -119,6 +141,14 @@ but best-effort.
 .TP
 .B mcp
 Deprecated compatibility command. Prints a deprecation warning and exits.
+.SH FILES
+.TP
+.I <repo>/.cline/kanban/config.json
+Project config. Its optional
+.B autoReviewCheck
+and
+.B autoReviewDoneCheck
+keys set commands Kanban runs before an auto-review commit and after the commit lands; see docs/auto-review-checks.md.
 .SH EXAMPLES
 .TP
 Start server on the default port:

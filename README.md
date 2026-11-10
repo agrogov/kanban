@@ -51,6 +51,8 @@ Create a task card manually, or open the sidebar chat and ask your agent to brea
 ### 3. Link and automate
 <kbd>⌘</kbd> + click a card to link it to another task. When a card is completed and moved to trash, linked tasks auto-start. Combine with auto-commit for fully autonomous dependency chains: one task completes → commits → kicks off the next → repeat. It’s a pretty magical experience asking your agent to decompose a big task into subtasks that auto-commit - he’ll cleverly do it in a way that parallelizes for maximum efficiency and links tasks together for end-to-end autonomy.
 
+A project can also set a check that runs before each auto-commit and a done check that runs after the commit lands. A failed done check holds the card in review, so its linked tasks wait. See [docs/auto-review-checks.md](docs/auto-review-checks.md).
+
 ### 4. Start tasks
 Hit the play button on a card. Kanban creates an ephemeral worktree just for that task so agents work in parallel without merge conflicts. Under the hood, it also symlinks gitignored files like `node_modules` so you don't have to worry about slow `npm install`s for each copy of your project.
 
